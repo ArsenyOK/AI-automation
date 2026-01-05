@@ -16,17 +16,53 @@ const openai = new OpenAI({
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
+// In-memory storage (без БД)
+const runs = new Map(); // runId -> { input, plan }
+
+// =====================
+// Input schema
+// =====================
 const CreateRunBody = z.object({
   input: z.string().min(1, "Prompt is required").max(4000),
   dryRun: z.boolean().optional().default(true),
 });
 
+// =====================
+// Shared schemas
+// =====================
+const TimeRangeSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("preset"),
+      value: z.enum(["today", "tomorrow", "this_week", "next_week"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("custom"),
+      start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+      end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    })
+    .strict(),
+]);
+
+// Preview (то, что пользователь проверяет перед Confirm)
+const PreviewSchema = z
+  .object({
+    task_candidates: z.array(z.string()).default([]),
+    summary: z.string().optional(),
+  })
+  .strict();
+
+// =====================
+// Intent schemas
+// =====================
 const CreateTasksIntent = z.object({
   intent: z.literal("create_tasks"),
   confidence: z.number().min(0).max(1),
   entities: z
     .object({
-      time_range: z.string().default("next_week"),
+      time_range: TimeRangeSchema,
     })
     .strict(),
   missing_fields: z.array(z.string()),
@@ -69,17 +105,21 @@ const DetectedIntentSchema = z.discriminatedUnion("intent", [
   UnknownIntent,
 ]);
 
+// =====================
+// Action schemas
+// =====================
 const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     id: z.string(),
     type: z.literal("create_task_list"),
     input: z
       .object({
-        time_range: z.string(),
+        time_range: TimeRangeSchema,
       })
       .strict(),
     depends_on: z.array(z.string()).optional(),
   }),
+
   z.object({
     id: z.string(),
     type: z.literal("summarize_text"),
@@ -90,6 +130,7 @@ const ActionSchema = z.discriminatedUnion("type", [
       .strict(),
     depends_on: z.array(z.string()).optional(),
   }),
+
   z.object({
     id: z.string(),
     type: z.literal("generate_email"),
@@ -100,6 +141,7 @@ const ActionSchema = z.discriminatedUnion("type", [
       .strict(),
     depends_on: z.array(z.string()).optional(),
   }),
+
   z.object({
     id: z.string(),
     type: z.literal("send_email"),
@@ -114,9 +156,38 @@ const ActionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+// Response contract (/api/runs)
+const CreateRunResponse = z.object({
+  runId: z.string(),
+  detected_intent: DetectedIntentSchema,
+  actions: z.array(ActionSchema),
+  preview: PreviewSchema.optional(),
+});
+
+// =====================
+// Helpers
+// =====================
+
+// Быстрый локальный extraction кандидатов задач из формата "Task: ..."
+function extractTaskCandidatesLocal(input) {
+  const idx = input.toLowerCase().indexOf("task:");
+  if (idx === -1) return [];
+
+  const chunk = input.slice(idx + 5).trim();
+  return chunk
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+// =====================
+// Mock plan fallback
+// =====================
 function mockPlan(input) {
   const text = input.toLowerCase();
 
+  // summarize
   if (
     text.includes("summary") ||
     text.includes("суммар") ||
@@ -131,9 +202,14 @@ function mockPlan(input) {
         requires_confirmation: false,
       },
       actions: [{ id: "a1", type: "summarize_text", input: { text: input } }],
+      preview: {
+        summary: "I will summarize the provided text.",
+        task_candidates: [],
+      },
     };
   }
 
+  // email
   if (
     text.includes("email") ||
     text.includes("письм") ||
@@ -143,40 +219,58 @@ function mockPlan(input) {
       detected_intent: {
         intent: "generate_email",
         confidence: 0.8,
-        entities: { to: null },
+        entities: {},
         missing_fields: ["email_to"],
         requires_confirmation: true,
       },
       actions: [{ id: "a1", type: "generate_email", input: { prompt: input } }],
+      preview: {
+        summary: "I will draft an email based on your request.",
+        task_candidates: [],
+      },
     };
   }
+
+  // create tasks
+  const time_range = { type: "preset", value: "next_week" };
+  const task_candidates = extractTaskCandidatesLocal(input);
 
   return {
     detected_intent: {
       intent: "create_tasks",
       confidence: 0.75,
-      entities: { time_range: "next_week" },
+      entities: { time_range },
       missing_fields: [],
       requires_confirmation: false,
     },
-    actions: [
-      {
-        id: "a1",
-        type: "create_task_list",
-        input: { time_range: "next_week" },
-      },
-    ],
+    actions: [{ id: "a1", type: "create_task_list", input: { time_range } }],
+    preview: {
+      task_candidates,
+      summary:
+        "I will create a task list for the selected period using tasks from your input.",
+    },
   };
 }
 
+// =====================
+// Prompt (PLANNING + PREVIEW candidates)
+// =====================
 function buildSystemPrompt() {
   return `
 You are an AI automation planner.
-Return ONLY valid JSON. No markdown. No explanations.
+Return ONLY raw JSON. No markdown. No explanations.
+Output must start with "{" and end with "}".
 
-You must output an object with exactly these fields:
-- detected_intent: { intent, confidence, entities, missing_fields, requires_confirmation }
-- actions: array of actions
+Use EXACT snake_case keys:
+- detected_intent
+- missing_fields
+- requires_confirmation
+- task_candidates
+
+Top-level fields must be exactly:
+- detected_intent
+- actions
+- preview
 
 Allowed intents:
 - create_tasks
@@ -190,36 +284,54 @@ Allowed action types:
 - generate_email
 - send_email
 
+IMPORTANT: This is PLANNING only.
+Do NOT generate final outputs (no final task plan, no email body, no summaries).
+Instead, return a PREVIEW that helps the user confirm understanding.
+
+time_range format (REQUIRED for create_tasks):
+- preset: { "type": "preset", "value": "today|tomorrow|this_week|next_week" }
+- custom: { "type": "custom", "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }
+
 Rules:
-1) Always return confidence between 0 and 1.
-2) If required data is missing, put it into missing_fields and set requires_confirmation=true.
+1) confidence must be between 0 and 1.
+2) If required data is missing, add it to missing_fields and set requires_confirmation=true.
 3) action.id must be unique like "a1", "a2"...
-4) If you use send_email, you MUST have "to" inside its input.
-5) Keep entities minimal and useful.
+4) detected_intent.entities must contain ONLY allowed keys (for create_tasks only time_range).
+5) For action type "create_task_list": input must contain ONLY { "time_range": <time_range_object> }.
+6) preview.task_candidates must list tasks that are EXPLICITLY mentioned by the user (extract-only; do NOT invent).
+7) If user provided tasks separated by commas, extract them into preview.task_candidates.
+8) If no explicit tasks are provided, return preview.task_candidates as [].
+9) If you cannot determine a valid time_range, use preset next_week.
 
-IMPORTANT PLANNING RULES:
-- This is PLANNING only. Do NOT generate final outputs (e.g. do not generate the actual tasks list).
-- For intent "create_tasks": entities must contain ONLY { "time_range": "<...>" }.
-- For action type "create_task_list": input must contain ONLY { "time_range": "<...>" }.
-- Never add extra keys to entities or action.input.
-- Do NOT include lists of tasks, email bodies, or summaries in planning.
+preview object:
+{
+  "task_candidates": ["..."], 
+  "summary": "One short sentence describing what will happen"
+}
 
-Example shape:
+Example:
 {
   "detected_intent": {
     "intent": "create_tasks",
     "confidence": 0.82,
-    "entities": { "time_range": "next_week" },
+    "entities": { "time_range": { "type": "preset", "value": "next_week" } },
     "missing_fields": [],
     "requires_confirmation": false
   },
   "actions": [
-    { "id": "a1", "type": "create_task_list", "input": { "time_range": "next_week" } }
-  ]
+    { "id": "a1", "type": "create_task_list", "input": { "time_range": { "type": "preset", "value": "next_week" } } }
+  ],
+  "preview": {
+    "task_candidates": ["Gym", "Reading"],
+    "summary": "I will create a task list for next week using tasks from your input."
+  }
 }
 `.trim();
 }
 
+// =====================
+// AI Plan
+// =====================
 async function aiPlan(input) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is missing in .env");
@@ -245,9 +357,11 @@ async function aiPlan(input) {
     throw new Error(`AI returned non-JSON content: ${content.slice(0, 200)}`);
   }
 
+  // Validate plan (preview optional but we want it for UX)
   const PlanSchema = z.object({
     detected_intent: DetectedIntentSchema,
     actions: z.array(ActionSchema),
+    preview: PreviewSchema.optional(),
   });
 
   const check = PlanSchema.safeParse(parsed);
@@ -257,9 +371,31 @@ async function aiPlan(input) {
     );
   }
 
+  // Если AI не дал preview.task_candidates — добавим локально (как страховку)
+  if (check.data.detected_intent.intent === "create_tasks") {
+    const localCandidates = extractTaskCandidatesLocal(input);
+    const existing = check.data.preview?.task_candidates ?? [];
+    const merged = existing.length ? existing : localCandidates;
+
+    return {
+      ...check.data,
+      preview: {
+        task_candidates: merged,
+        summary:
+          check.data.preview?.summary ||
+          "I will create a task list for the selected period using tasks from your input.",
+      },
+    };
+  }
+
   return check.data;
 }
 
+// =====================
+// Routes
+// =====================
+
+// 1) RUN = planning only (возвращает preview для подтверждения)
 app.post("/api/runs", async (req, res) => {
   const parsed = CreateRunBody.safeParse(req.body);
   if (!parsed.success) {
@@ -282,15 +418,61 @@ app.post("/api/runs", async (req, res) => {
       });
     }
 
+    // сохраняем для execute
+    runs.set(runId, { input, plan });
+
     return res.json(response);
   } catch (err) {
-    console.error("AI PLAN ERROR:", err?.message || err);
+    const reason = err?.message || String(err);
+    console.error("AI PLAN ERROR:", reason);
 
     const plan = mockPlan(input);
-    const response = { runId, ...plan, _fallback: "mock" };
+    runs.set(runId, { input, plan });
 
+    const response = { runId, ...plan, _fallback: "mock", _ai_error: reason };
     return res.json(response);
   }
+});
+
+// 2) CONFIRM & EXECUTE = выполнить план и вернуть результат
+app.post("/api/runs/:id/execute", async (req, res) => {
+  const runId = req.params.id;
+  const stored = runs.get(runId);
+
+  if (!stored) {
+    return res.status(404).json({ error: "Run not found" });
+  }
+
+  const { input, plan } = stored;
+
+  // MVP: поддержим только create_task_list как первый шаг
+  const firstAction = plan.actions?.[0];
+  if (!firstAction) {
+    return res.status(400).json({ error: "No actions to execute" });
+  }
+
+  // В этом варианте “результат” = финальный список задач.
+  // Пока делаем просто: берём preview.task_candidates (уже проверено пользователем).
+  if (firstAction.type === "create_task_list") {
+    const tasks = plan.preview?.task_candidates?.length
+      ? plan.preview.task_candidates
+      : extractTaskCandidatesLocal(input);
+
+    return res.json({
+      runId,
+      status: "success",
+      results: {
+        time_range: firstAction.input.time_range,
+        tasks,
+      },
+      logs: [{ step: firstAction.id, type: firstAction.type, status: "done" }],
+    });
+  }
+
+  // Остальные actions позже
+  return res
+    .status(400)
+    .json({ error: `Unsupported action type: ${firstAction.type}` });
 });
 
 app.listen(3001, () => {

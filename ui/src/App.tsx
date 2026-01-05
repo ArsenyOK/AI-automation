@@ -6,6 +6,7 @@ import TextareaBlock from "./components/TextareaBlock/TextareaBlock";
 
 const App = () => {
   const [detect, setDetect] = useState(false);
+  const [runData, setRunData] = useState<any>(null);
 
   const toggleDetect = () => {
     setDetect(true);
@@ -23,8 +24,8 @@ const App = () => {
           <Settingsblock />
         </div>
         <div className="mt-6 mx-4">
-          <TextareaBlock toggleDetect={toggleDetect} />
-          <DetectIntent detect={detect} />
+          <TextareaBlock toggleDetect={toggleDetect} setRunData={setRunData} />
+          <DetectIntent runData={runData} detect={detect} />
         </div>
       </div>
     </div>

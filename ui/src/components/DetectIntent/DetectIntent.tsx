@@ -3,9 +3,10 @@ import Actions from "./Actions";
 
 interface DetectIntentProps {
   detect: boolean;
+  runData: any;
 }
 
-const DetectIntent = ({ detect }: DetectIntentProps) => {
+const DetectIntent = ({ detect, runData }: DetectIntentProps) => {
   return (
     <div
       className={`mt-6 border-1 border-[#D5D7E3] rounded-xl transition-all duration-300 ease-out
@@ -52,7 +53,7 @@ const DetectIntent = ({ detect }: DetectIntentProps) => {
           </svg>
         </div>
       </div>
-      <Actions />
+      <Actions runData={runData} />
     </div>
   );
 };

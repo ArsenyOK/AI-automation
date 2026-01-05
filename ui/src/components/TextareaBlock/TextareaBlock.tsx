@@ -2,9 +2,10 @@ import { useState } from "react";
 
 interface TextareaBlockProps {
   toggleDetect: () => void;
+  setRunData: (data: any) => void;
 }
 
-const TextareaBlock = ({ toggleDetect }: TextareaBlockProps) => {
+const TextareaBlock = ({ toggleDetect, setRunData }: TextareaBlockProps) => {
   const [text, setText] = useState<string>("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -12,14 +13,43 @@ const TextareaBlock = ({ toggleDetect }: TextareaBlockProps) => {
   };
 
   const fetchData = async (text: string) => {
-    const res = await fetch("http://localhost:3001/api/runs", {
+    const planRes = await fetch("http://localhost:3001/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: text, dryRun: true }),
+      body: JSON.stringify({ input: text, dryRun: false }),
     });
 
-    const data = await res.json();
-    console.info("Response from server:", data);
+    if (!planRes.ok) {
+      const errText = await planRes.text();
+      throw new Error(`Plan error: ${planRes.status} ${errText}`);
+    }
+
+    const plan = await planRes.json();
+
+    if (plan?.runId) {
+      setRunData(plan);
+    }
+
+    let executeResult = null;
+
+    // if (plan?.runId) {
+    //   const execRes = await fetch(
+    //     `http://localhost:3001/api/runs/${plan.runId}/execute`,
+    //     { method: "POST" }
+    //   );
+
+    //   if (!execRes.ok) {
+    //     const errText = await execRes.text();
+    //     throw new Error(`Execute error: ${execRes.status} ${errText}`);
+    //   }
+
+    //   executeResult = await execRes.json();
+    // }
+
+    // console.info("PLAN:", plan);
+    console.info("EXECUTE:", executeResult);
+
+    return { plan, executeResult };
   };
 
   const onSubmit = (e: React.FormEvent) => {

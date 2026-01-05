@@ -1,6 +1,13 @@
 import SettingsIcon from "../../icons/SettingsIcon";
 
-const ActionItem = ({ number }: any) => {
+const ActionItem = ({ number, action }: any) => {
+  console.log(action);
+  console.info(
+    action.input.time_range.end_date,
+    "action.input.time_range.end_time"
+  );
+
+  // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
     <div className="flex">
       <div className="flex flex-col items-center mr-4 gap-2">
@@ -13,7 +20,14 @@ const ActionItem = ({ number }: any) => {
       </div>
       <div className="w-full pb-2">
         <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center">
-          Create task list for the next week
+          <div>
+            Create task list{" "}
+            <span className="bg-[#DBE2E9] rounded-xl px-3 py-1 gap-2 items-center">
+              {action.input.time_range.type === "custom"
+                ? action.input.time_range.end_date
+                : action.input.time_range.value}
+            </span>
+          </div>
           <SettingsIcon />
         </div>
         <div className="border-b-1 border-[#D5D7E3] ml-1 pb-3 pl-3">
