@@ -5,21 +5,33 @@ interface TextareaBlockProps {
 }
 
 const TextareaBlock = ({ toggleDetect }: TextareaBlockProps) => {
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string>("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
   };
 
+  const fetchData = async (text: string) => {
+    const res = await fetch("http://localhost:3001/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: text, dryRun: true }),
+    });
+
+    const data = await res.json();
+    console.info("Response from server:", data);
+  };
+
   const onSubmit = (e: React.FormEvent) => {
     if (text) {
       e.preventDefault();
+      fetchData(text);
       toggleDetect();
     }
   };
 
   return (
-    <div className="mr-4 flex justify-between gap-x-4">
+    <div className="flex justify-between gap-x-4">
       <input
         id="email-address"
         type="email"
