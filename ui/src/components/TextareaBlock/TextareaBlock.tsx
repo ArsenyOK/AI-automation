@@ -5,6 +5,8 @@ interface TextareaBlockProps {
   setRunData: (data: any) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
+  setText?: (text: string) => void;
+  text?: string;
 }
 
 const TextareaBlock = ({
@@ -12,8 +14,9 @@ const TextareaBlock = ({
   setRunData,
   loading,
   setLoading,
+  setText,
+  text
 }: TextareaBlockProps) => {
-  const [text, setText] = useState<string>("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);

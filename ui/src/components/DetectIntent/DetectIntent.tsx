@@ -6,9 +6,17 @@ interface DetectIntentProps {
   detect: boolean;
   runData: any;
   loading: boolean;
+  setExecuteResult: (data: any) => void;
+  executeResult: any;
 }
 
-const DetectIntent = ({ detect, runData, loading }: DetectIntentProps) => {
+const DetectIntent = ({
+  detect,
+  runData,
+  loading,
+  setExecuteResult,
+  executeResult,
+}: DetectIntentProps) => {
   return (
     <div
       className={`mt-6 border-1 border-[#D5D7E3] rounded-xl transition-all duration-300 ease-out
@@ -55,7 +63,15 @@ const DetectIntent = ({ detect, runData, loading }: DetectIntentProps) => {
           </svg>
         </div>
       </div>
-      {loading ? <ActionsSkeleton /> : <Actions runData={runData} />}
+      {loading ? (
+        <ActionsSkeleton />
+      ) : (
+        <Actions
+          runData={runData}
+          setExecuteResult={setExecuteResult}
+          executeResult={executeResult}
+        />
+      )}
     </div>
   );
 };

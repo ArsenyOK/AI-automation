@@ -40,7 +40,6 @@ export const HistoryModal = ({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* overlay */}
       <button
         aria-label="Close"
         onClick={onClose}

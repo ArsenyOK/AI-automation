@@ -7,9 +7,10 @@ const ActionItem = ({
   preview,
   plan,
   setIsDoneExecute,
+  setExecuteResult,
+  executeResult,
 }: any) => {
   const [isExecuting, setIsExecuting] = useState(false);
-  const [executeResult, setExecuteResult] = useState<any>(null);
 
   const executeRunId = async () => {
     if (!plan?.runId) {

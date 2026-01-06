@@ -4,9 +4,15 @@ import ActionItem from "./ActionItem/ActionItem";
 
 interface ActionsProps {
   runData: any;
+  setExecuteResult?: (data: any) => void;
+  executeResult?: any;
 }
 
-const Actions = ({ runData }: ActionsProps) => {
+const Actions = ({
+  runData,
+  setExecuteResult,
+  executeResult,
+}: ActionsProps) => {
   const [isDoneExecute, setIsDoneExecute] = useState(null);
 
   return (
@@ -21,6 +27,8 @@ const Actions = ({ runData }: ActionsProps) => {
             preview={runData.preview}
             plan={runData}
             setIsDoneExecute={setIsDoneExecute}
+            setExecuteResult={setExecuteResult}
+            executeResult={executeResult}
           />
         ))}
         {isDoneExecute && (
