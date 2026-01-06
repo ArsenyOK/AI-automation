@@ -203,12 +203,17 @@ const ExecuteResponseSchema = z.object({
 // Helpers
 // =====================
 
-// Быстрый локальный extraction кандидатов задач из формата "Task: ..."
 function extractTaskCandidatesLocal(input) {
-  const idx = input.toLowerCase().indexOf("task:");
-  if (idx === -1) return [];
+  const lower = input.toLowerCase();
 
-  const chunk = input.slice(idx + 5).trim();
+  const match =
+    lower.match(/\b(task|tasks|my tasks)\s*:/i) ||
+    lower.match(/\b(задачи|завдання)\s*:/i);
+  if (!match || match.index == null) return [];
+
+  const idx = match.index + match[0].length;
+  const chunk = input.slice(idx).trim();
+
   return chunk
     .split(",")
     .map((s) => s.trim())
@@ -313,11 +318,8 @@ You are an AI automation planner.
 Return ONLY raw JSON. No markdown. No explanations.
 Output must start with "{" and end with "}".
 
-Use EXACT snake_case keys:
-- detected_intent
-- missing_fields
-- requires_confirmation
-- task_candidates
+detected_intent MUST be an OBJECT, never a string.
+If you cannot follow the schema, return a valid JSON with intent "unknown".
 
 Top-level fields must be exactly:
 - detected_intent
@@ -355,12 +357,78 @@ Rules:
 8) If no explicit tasks are provided, return preview.task_candidates as [].
 9) If you cannot determine a valid time_range, use preset next_week.
 
-preview object:
+Example (unknown):
 {
-  "task_candidates": ["..."],
-  "summary": "One short sentence describing what will happen"
+  "detected_intent": {
+    "intent": "unknown",
+    "confidence": 0.2,
+    "entities": {},
+    "missing_fields": [],
+    "requires_confirmation": false
+  },
+  "actions": [],
+  "preview": { "task_candidates": [], "summary": "I could not determine an intent." }
 }
 `.trim();
+}
+
+// =====================
+// JSON repair helper
+// =====================
+function buildRepairPrompt() {
+  return `
+You are a JSON repair tool.
+
+Return ONLY raw JSON. No markdown. No explanations.
+Output must start with "{" and end with "}".
+
+Fix the provided JSON so it matches the required schema.
+
+REQUIRED top-level fields:
+- detected_intent (OBJECT, not string)
+- actions (array)
+- preview (object)
+
+Rules:
+- Keep meaning from the original as much as possible.
+- If something is missing, fill it conservatively.
+- If unsure, set intent "unknown", confidence 0.2, actions [].
+`.trim();
+}
+
+async function aiRepairPlan(badJsonText) {
+  const resp = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    messages: [
+      { role: "system", content: buildRepairPrompt() },
+      {
+        role: "user",
+        content: JSON.stringify({
+          bad_json: badJsonText,
+          schema_hint: {
+            detected_intent: {
+              intent: "create_tasks|summarize_text|generate_email|unknown",
+              confidence: "number 0..1",
+              entities: "object",
+              missing_fields: "string[]",
+              requires_confirmation: "boolean",
+            },
+            actions: [
+              {
+                id: "a1",
+                type: "create_task_list|summarize_text|generate_email|send_email",
+                input: {},
+              },
+            ],
+            preview: { task_candidates: ["..."], summary: "..." },
+          },
+        }),
+      },
+    ],
+  });
+
+  return resp.choices?.[0]?.message?.content ?? "";
 }
 
 // =====================
@@ -370,6 +438,12 @@ async function aiPlan(input) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is missing in .env");
   }
+
+  const PlanSchema = z.object({
+    detected_intent: DetectedIntentSchema,
+    actions: z.array(ActionSchema),
+    preview: PreviewSchema.optional(),
+  });
 
   const messages = [
     { role: "system", content: buildSystemPrompt() },
@@ -384,6 +458,7 @@ async function aiPlan(input) {
 
   const content = resp.choices?.[0]?.message?.content ?? "";
 
+  // 1) parse
   let parsed;
   try {
     parsed = JSON.parse(content);
@@ -391,20 +466,40 @@ async function aiPlan(input) {
     throw new Error(`AI returned non-JSON content: ${content.slice(0, 200)}`);
   }
 
-  const PlanSchema = z.object({
-    detected_intent: DetectedIntentSchema,
-    actions: z.array(ActionSchema),
-    preview: PreviewSchema.optional(),
-  });
+  // 2) validate
+  let check = PlanSchema.safeParse(parsed);
 
-  const check = PlanSchema.safeParse(parsed);
+  // 3) repair if invalid
   if (!check.success) {
-    throw new Error(
-      "AI JSON schema invalid: " + JSON.stringify(check.error.flatten())
-    );
+    try {
+      const repairedText = await aiRepairPlan(content);
+
+      let repairedParsed;
+      try {
+        repairedParsed = JSON.parse(repairedText);
+      } catch (e) {
+        throw new Error(
+          `Repair returned non-JSON: ${repairedText.slice(0, 200)}`
+        );
+      }
+
+      const repairedCheck = PlanSchema.safeParse(repairedParsed);
+      if (!repairedCheck.success) {
+        throw new Error(
+          "AI JSON schema invalid (after repair): " +
+            JSON.stringify(repairedCheck.error.flatten())
+        );
+      }
+
+      check = repairedCheck;
+    } catch (repairErr) {
+      // если repair упал — выбрасываем исходную ошибку в общий catch (и уйдем в mock)
+      throw new Error(
+        "AI JSON schema invalid: " + JSON.stringify(check.error.flatten())
+      );
+    }
   }
 
-  // страховка task_candidates
   if (check.data.detected_intent.intent === "create_tasks") {
     const localCandidates = extractTaskCandidatesLocal(input);
     const existing = check.data.preview?.task_candidates ?? [];
@@ -447,8 +542,8 @@ Rules:
 - Do NOT add new tasks.
 - Do NOT rename tasks (keep the same title text).
 - Keep reasons short.
-- Output must match this schema:
 
+Output:
 {
   "tasks": [
     { "title": "...", "priority": "high|medium|low", "reason": "..." }
@@ -461,10 +556,7 @@ Rules:
 async function aiEnrichTasks({ time_range, task_candidates }) {
   const messages = [
     { role: "system", content: buildEnrichPrompt() },
-    {
-      role: "user",
-      content: JSON.stringify({ time_range, task_candidates }),
-    },
+    { role: "user", content: JSON.stringify({ time_range, task_candidates }) },
   ];
 
   const resp = await openai.chat.completions.create({
@@ -498,7 +590,6 @@ async function aiEnrichTasks({ time_range, task_candidates }) {
     );
   }
 
-  // Доп. гарантия: порядок и titles не меняем
   const inputTitles = task_candidates;
   const outputTitles = check.data.tasks.map((t) => t.title);
 
@@ -506,10 +597,7 @@ async function aiEnrichTasks({ time_range, task_candidates }) {
     inputTitles.length === outputTitles.length &&
     inputTitles.every((t, i) => t === outputTitles[i]);
 
-  if (!sameTitles) {
-    // если AI попытался переименовать/переставить — делаем жёсткий fallback
-    return fallbackEnrich(task_candidates);
-  }
+  if (!sameTitles) return fallbackEnrich(task_candidates);
 
   return check.data;
 }
@@ -565,8 +653,8 @@ app.post("/api/runs/:id/execute", async (req, res) => {
   }
 
   const { input, plan } = stored;
-
   const firstAction = plan.actions?.[0];
+
   if (!firstAction) {
     return res.status(400).json({ error: "No actions to execute" });
   }
@@ -584,11 +672,7 @@ app.post("/api/runs/:id/execute", async (req, res) => {
       const response = {
         runId,
         status: "success",
-        results: {
-          time_range,
-          tasks: enriched.tasks,
-          advice: enriched.advice,
-        },
+        results: { time_range, tasks: enriched.tasks, advice: enriched.advice },
         logs: [
           { step: firstAction.id, type: firstAction.type, status: "done" },
         ],
@@ -609,22 +693,16 @@ app.post("/api/runs/:id/execute", async (req, res) => {
 
       const fallback = fallbackEnrich(task_candidates);
 
-      const response = {
+      return res.json({
         runId,
         status: "success",
-        results: {
-          time_range,
-          tasks: fallback.tasks,
-          advice: fallback.advice,
-        },
+        results: { time_range, tasks: fallback.tasks, advice: fallback.advice },
         logs: [
           { step: firstAction.id, type: firstAction.type, status: "done" },
         ],
         _fallback: "enrich_mock",
         _ai_error: reason,
-      };
-
-      return res.json(response);
+      });
     }
   }
 
