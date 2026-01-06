@@ -57,7 +57,6 @@ const TextareaBlock = ({
     // }
 
     // console.info("PLAN:", plan);
-    console.info("EXECUTE:", executeResult);
 
     return { plan };
   };

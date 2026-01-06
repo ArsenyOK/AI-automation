@@ -1,10 +1,24 @@
+import { useState } from "react";
 import SettingsIcon from "../../icons/SettingsIcon";
 
-const ActionItem = ({ number, action, preview, plan }: any) => {
-  const executeRunId = async () => {
-    let executeResult = null;
+const ActionItem = ({
+  number,
+  action,
+  preview,
+  plan,
+  setIsDoneExecute,
+}: any) => {
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executeResult, setExecuteResult] = useState<any>(null);
 
-    if (plan?.runId) {
+  const executeRunId = async () => {
+    if (!plan?.runId) {
+      throw new Error("runId is missing. Click RUN first.");
+    }
+
+    try {
+      setIsExecuting(true);
+
       const execRes = await fetch(
         `http://localhost:3001/api/runs/${plan.runId}/execute`,
         { method: "POST" }
@@ -15,13 +29,18 @@ const ActionItem = ({ number, action, preview, plan }: any) => {
         throw new Error(`Execute error: ${execRes.status} ${errText}`);
       }
 
-      executeResult = await execRes.json();
+      const data = await execRes.json();
+      setExecuteResult(data);
+      setIsDoneExecute(data.logs);
 
-      console.info(executeResult, "executeResult");
-
-      return { executeResult };
+      console.info(data, "executeResult");
+      return data;
+    } finally {
+      setIsExecuting(false);
     }
   };
+
+  console.info(executeResult, "executeResult");
 
   // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
@@ -46,7 +65,7 @@ const ActionItem = ({ number, action, preview, plan }: any) => {
           </div>
           <SettingsIcon />
         </div>
-        {preview ? (
+        {preview && !executeResult ? (
           <div className="flex flex-col mt-2 gap-4">
             <div className="flex w-full flex-col gap-1 mt-4  p-5 border-1 border-[#D5D7E3] bg-[#F1F1F6] rounded-xl">
               <div className="text-xl font-medium">
@@ -87,43 +106,88 @@ const ActionItem = ({ number, action, preview, plan }: any) => {
                 </svg>
                 Edit
               </button>
+
               <button
                 onClick={() => executeRunId()}
-                className="flex-none rounded-xl bg-[#00AA44] px-8 py-2 text-sm font-semibold text-white shadow-xs text-xl font-medium hover:bg-green-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+                disabled={isExecuting}
+                className={`
+    flex items-center justify-center gap-1 rounded-xl bg-[#00AA44] px-8 py-2 text-sm font-semibold text-white shadow-xs text-xl font-medium hover:bg-green-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600
+    disabled:opacity-60 disabled:cursor-not-allowed
+    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500
+  `}
               >
-                Confirm & Execute
+                {isExecuting && (
+                  <svg
+                    className="h-5 w-5 animate-spin text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 26 26"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="13"
+                      cy="13"
+                      r="8"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                    />
+                  </svg>
+                )}
+
+                {isExecuting ? "Running…" : " Confirm & Execute"}
               </button>
             </div>
           </div>
         ) : (
-          <div className="border-b-1 border-[#D5D7E3] ml-1 pb-3 pl-3">
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
-              <div className="flex-1 text-xl font-medium ml-2">
-                <span className="text-[#6181EF]">Planning</span>: Define weekly
-                priorities.
-              </div>
+          <div>
+            <div className="border-b-1 border-[#D5D7E3] ml-1 pb-3 pl-3">
+              {executeResult.results.tasks.map(
+                (task: string, index: number) => {
+                  console.info(task);
+                  return (
+                    <div key={index}>
+                      <div
+                        className="flex gap-2 items-center gap-2 mt-2"
+                        key={index}
+                      >
+                        <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
+                        <div
+                          className="flex justify-center items-center w-[26px] h-[26px] rounded-full text-white"
+                          style={{
+                            backgroundColor:
+                              task.priority === "high"
+                                ? "#E7000B"
+                                : task.priority === "medium"
+                                ? "#FF6900"
+                                : "#155DFC",
+                          }}
+                        >
+                          {task.priority
+                            ? task.priority === "high"
+                              ? "H"
+                              : task.priority === "medium"
+                              ? "M"
+                              : "L"
+                            : index + 1}
+                        </div>
+                        <div className="flex-1 text-xl font-medium ml-2">
+                          <span className="text-[#6181EF]">{task.title}.</span>{" "}
+                          {task.reason}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
-              <div className="flex-1 text-xl font-medium ml-2">
-                <span className="text-[#6181EF]">Developer</span>: Work on
-                project X, for us on feature Y.
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
-              <div className="flex-1 text-xl font-medium ml-2">
-                <span className="text-[#6181EF]">Meetings</span>: Team meeting
-                on Tuesday morning. Client call on Thursday adternoon.
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
-              <div className="flex-1 text-xl font-medium ml-2">
-                <span className="text-[#6181EF]">Review</span>: End of week
-                project review on Friday.
-              </div>
+            <div className="flex justify-start items-center gap-2 mt-2 font-normal text-md">
+              <div className="w-[10px] h-[10px] bg-[#A8ADD3] rounded-full"></div>
+              {executeResult.results?.advice?.message}
             </div>
           </div>
         )}

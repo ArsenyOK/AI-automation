@@ -1,3 +1,4 @@
+import { useState } from "react";
 import CheckIcons from "../icons/CheckIcons";
 import ActionItem from "./ActionItem/ActionItem";
 
@@ -6,6 +7,8 @@ interface ActionsProps {
 }
 
 const Actions = ({ runData }: ActionsProps) => {
+  const [isDoneExecute, setIsDoneExecute] = useState(null);
+
   return (
     <div className="mb-2 p-5">
       <div className="text-[#1B1D32] text-xl font-medium">Actions:</div>
@@ -17,12 +20,15 @@ const Actions = ({ runData }: ActionsProps) => {
             action={action}
             preview={runData.preview}
             plan={runData}
+            setIsDoneExecute={setIsDoneExecute}
           />
         ))}
-        {/* <div className="flex bg-[#DFECEB] rounded-md px-3 py-2 gap-2 items-center text-[#256D3B]">
-          <CheckIcons />
-          Email sent successfully at 2:30 PM.
-        </div> */}
+        {isDoneExecute && (
+          <div className="flex bg-[#DFECEB] rounded-md px-3 py-2 gap-2 items-center text-[#256D3B]">
+            <CheckIcons />
+            {isDoneExecute[0].type + ": " + isDoneExecute[0].status}
+          </div>
+        )}
       </div>
     </div>
   );
