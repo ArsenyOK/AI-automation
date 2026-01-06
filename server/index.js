@@ -16,7 +16,6 @@ const openai = new OpenAI({
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
-// In-memory storage (без БД)
 const runs = new Map(); // runId -> { input, plan }
 
 // =====================
@@ -165,6 +164,42 @@ const CreateRunResponse = z.object({
 });
 
 // =====================
+// Execute result schemas
+// =====================
+const PrioritySchema = z.enum(["high", "medium", "low"]);
+
+const EnrichedTaskSchema = z
+  .object({
+    title: z.string().min(1),
+    priority: PrioritySchema,
+    reason: z.string().min(1),
+  })
+  .strict();
+
+const AdviceSchema = z
+  .object({
+    message: z.string().min(1),
+  })
+  .strict();
+
+const ExecuteResponseSchema = z.object({
+  runId: z.string(),
+  status: z.enum(["success", "failed"]),
+  results: z.object({
+    time_range: TimeRangeSchema,
+    tasks: z.array(EnrichedTaskSchema),
+    advice: AdviceSchema,
+  }),
+  logs: z.array(
+    z.object({
+      step: z.string(),
+      type: z.string(),
+      status: z.enum(["done", "failed"]),
+    })
+  ),
+});
+
+// =====================
 // Helpers
 // =====================
 
@@ -179,6 +214,23 @@ function extractTaskCandidatesLocal(input) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 30);
+}
+
+// Простой fallback enrichment (если AI упал)
+function fallbackEnrich(tasks) {
+  return {
+    tasks: tasks.map((t, i) => ({
+      title: t,
+      priority: i === 0 ? "high" : "medium",
+      reason:
+        i === 0
+          ? "Start with the most important task to build momentum."
+          : "Keeps steady progress.",
+    })),
+    advice: {
+      message: "Start small, stay consistent — progress beats perfection.",
+    },
+  };
 }
 
 // =====================
@@ -305,26 +357,8 @@ Rules:
 
 preview object:
 {
-  "task_candidates": ["..."], 
+  "task_candidates": ["..."],
   "summary": "One short sentence describing what will happen"
-}
-
-Example:
-{
-  "detected_intent": {
-    "intent": "create_tasks",
-    "confidence": 0.82,
-    "entities": { "time_range": { "type": "preset", "value": "next_week" } },
-    "missing_fields": [],
-    "requires_confirmation": false
-  },
-  "actions": [
-    { "id": "a1", "type": "create_task_list", "input": { "time_range": { "type": "preset", "value": "next_week" } } }
-  ],
-  "preview": {
-    "task_candidates": ["Gym", "Reading"],
-    "summary": "I will create a task list for next week using tasks from your input."
-  }
 }
 `.trim();
 }
@@ -357,7 +391,6 @@ async function aiPlan(input) {
     throw new Error(`AI returned non-JSON content: ${content.slice(0, 200)}`);
   }
 
-  // Validate plan (preview optional but we want it for UX)
   const PlanSchema = z.object({
     detected_intent: DetectedIntentSchema,
     actions: z.array(ActionSchema),
@@ -371,7 +404,7 @@ async function aiPlan(input) {
     );
   }
 
-  // Если AI не дал preview.task_candidates — добавим локально (как страховку)
+  // страховка task_candidates
   if (check.data.detected_intent.intent === "create_tasks") {
     const localCandidates = extractTaskCandidatesLocal(input);
     const existing = check.data.preview?.task_candidates ?? [];
@@ -392,10 +425,100 @@ async function aiPlan(input) {
 }
 
 // =====================
+// AI Enrichment for execute
+// =====================
+function buildEnrichPrompt() {
+  return `
+You are a productivity assistant.
+
+Return ONLY raw JSON. No markdown. No explanations.
+Output must start with "{" and end with "}".
+
+Input:
+- time_range (object)
+- task_candidates (array of strings)
+
+Your job:
+1) For EACH task, assign a priority: "high" | "medium" | "low"
+2) Provide a short reason (1 sentence max) for the priority
+3) Provide one short motivational advice message (1-2 sentences)
+
+Rules:
+- Do NOT add new tasks.
+- Do NOT rename tasks (keep the same title text).
+- Keep reasons short.
+- Output must match this schema:
+
+{
+  "tasks": [
+    { "title": "...", "priority": "high|medium|low", "reason": "..." }
+  ],
+  "advice": { "message": "..." }
+}
+`.trim();
+}
+
+async function aiEnrichTasks({ time_range, task_candidates }) {
+  const messages = [
+    { role: "system", content: buildEnrichPrompt() },
+    {
+      role: "user",
+      content: JSON.stringify({ time_range, task_candidates }),
+    },
+  ];
+
+  const resp = await openai.chat.completions.create({
+    model: MODEL,
+    messages,
+    temperature: 0.4,
+  });
+
+  const content = resp.choices?.[0]?.message?.content ?? "";
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    throw new Error(
+      `Enrich returned non-JSON content: ${content.slice(0, 200)}`
+    );
+  }
+
+  const EnrichSchema = z
+    .object({
+      tasks: z.array(EnrichedTaskSchema),
+      advice: AdviceSchema,
+    })
+    .strict();
+
+  const check = EnrichSchema.safeParse(parsed);
+  if (!check.success) {
+    throw new Error(
+      "Enrich JSON schema invalid: " + JSON.stringify(check.error.flatten())
+    );
+  }
+
+  // Доп. гарантия: порядок и titles не меняем
+  const inputTitles = task_candidates;
+  const outputTitles = check.data.tasks.map((t) => t.title);
+
+  const sameTitles =
+    inputTitles.length === outputTitles.length &&
+    inputTitles.every((t, i) => t === outputTitles[i]);
+
+  if (!sameTitles) {
+    // если AI попытался переименовать/переставить — делаем жёсткий fallback
+    return fallbackEnrich(task_candidates);
+  }
+
+  return check.data;
+}
+
+// =====================
 // Routes
 // =====================
 
-// 1) RUN = planning only (возвращает preview для подтверждения)
+// 1) RUN = planning only
 app.post("/api/runs", async (req, res) => {
   const parsed = CreateRunBody.safeParse(req.body);
   if (!parsed.success) {
@@ -418,9 +541,7 @@ app.post("/api/runs", async (req, res) => {
       });
     }
 
-    // сохраняем для execute
     runs.set(runId, { input, plan });
-
     return res.json(response);
   } catch (err) {
     const reason = err?.message || String(err);
@@ -434,7 +555,7 @@ app.post("/api/runs", async (req, res) => {
   }
 });
 
-// 2) CONFIRM & EXECUTE = выполнить план и вернуть результат
+// 2) CONFIRM & EXECUTE = выполнить план и вернуть enriched результат
 app.post("/api/runs/:id/execute", async (req, res) => {
   const runId = req.params.id;
   const stored = runs.get(runId);
@@ -445,31 +566,68 @@ app.post("/api/runs/:id/execute", async (req, res) => {
 
   const { input, plan } = stored;
 
-  // MVP: поддержим только create_task_list как первый шаг
   const firstAction = plan.actions?.[0];
   if (!firstAction) {
     return res.status(400).json({ error: "No actions to execute" });
   }
 
-  // В этом варианте “результат” = финальный список задач.
-  // Пока делаем просто: берём preview.task_candidates (уже проверено пользователем).
   if (firstAction.type === "create_task_list") {
-    const tasks = plan.preview?.task_candidates?.length
+    const task_candidates = plan.preview?.task_candidates?.length
       ? plan.preview.task_candidates
       : extractTaskCandidatesLocal(input);
 
-    return res.json({
-      runId,
-      status: "success",
-      results: {
-        time_range: firstAction.input.time_range,
-        tasks,
-      },
-      logs: [{ step: firstAction.id, type: firstAction.type, status: "done" }],
-    });
+    const time_range = firstAction.input.time_range;
+
+    try {
+      const enriched = await aiEnrichTasks({ time_range, task_candidates });
+
+      const response = {
+        runId,
+        status: "success",
+        results: {
+          time_range,
+          tasks: enriched.tasks,
+          advice: enriched.advice,
+        },
+        logs: [
+          { step: firstAction.id, type: firstAction.type, status: "done" },
+        ],
+      };
+
+      const check = ExecuteResponseSchema.safeParse(response);
+      if (!check.success) {
+        return res.status(500).json({
+          error: "Execute response invalid",
+          details: check.error.flatten(),
+        });
+      }
+
+      return res.json(response);
+    } catch (err) {
+      const reason = err?.message || String(err);
+      console.error("AI ENRICH ERROR:", reason);
+
+      const fallback = fallbackEnrich(task_candidates);
+
+      const response = {
+        runId,
+        status: "success",
+        results: {
+          time_range,
+          tasks: fallback.tasks,
+          advice: fallback.advice,
+        },
+        logs: [
+          { step: firstAction.id, type: firstAction.type, status: "done" },
+        ],
+        _fallback: "enrich_mock",
+        _ai_error: reason,
+      };
+
+      return res.json(response);
+    }
   }
 
-  // Остальные actions позже
   return res
     .status(400)
     .json({ error: `Unsupported action type: ${firstAction.type}` });

@@ -16,6 +16,7 @@ const Actions = ({ runData }: ActionsProps) => {
             number={key + 1}
             action={action}
             preview={runData.preview}
+            plan={runData}
           />
         ))}
         {/* <div className="flex bg-[#DFECEB] rounded-md px-3 py-2 gap-2 items-center text-[#256D3B]">

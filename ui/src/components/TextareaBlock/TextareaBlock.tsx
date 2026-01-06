@@ -3,11 +3,17 @@ import { useState } from "react";
 interface TextareaBlockProps {
   toggleDetect: () => void;
   setRunData: (data: any) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
-const TextareaBlock = ({ toggleDetect, setRunData }: TextareaBlockProps) => {
+const TextareaBlock = ({
+  toggleDetect,
+  setRunData,
+  loading,
+  setLoading,
+}: TextareaBlockProps) => {
   const [text, setText] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
@@ -23,8 +29,8 @@ const TextareaBlock = ({ toggleDetect, setRunData }: TextareaBlockProps) => {
 
     if (!planRes.ok) {
       const errText = await planRes.text();
-      throw new Error(`Plan error: ${planRes.status} ${errText}`);
       setLoading(false);
+      throw new Error(`Plan error: ${planRes.status} ${errText}`);
     }
 
     const plan = await planRes.json();
@@ -53,7 +59,7 @@ const TextareaBlock = ({ toggleDetect, setRunData }: TextareaBlockProps) => {
     // console.info("PLAN:", plan);
     console.info("EXECUTE:", executeResult);
 
-    return { plan, executeResult };
+    return { plan };
   };
 
   const onSubmit = (e: React.FormEvent) => {

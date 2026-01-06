@@ -1,11 +1,27 @@
 import SettingsIcon from "../../icons/SettingsIcon";
 
-const ActionItem = ({ number, action, preview }: any) => {
-  console.log(action);
-  console.info(
-    action.input.time_range.end_date,
-    "action.input.time_range.end_time"
-  );
+const ActionItem = ({ number, action, preview, plan }: any) => {
+  const executeRunId = async () => {
+    let executeResult = null;
+
+    if (plan?.runId) {
+      const execRes = await fetch(
+        `http://localhost:3001/api/runs/${plan.runId}/execute`,
+        { method: "POST" }
+      );
+
+      if (!execRes.ok) {
+        const errText = await execRes.text();
+        throw new Error(`Execute error: ${execRes.status} ${errText}`);
+      }
+
+      executeResult = await execRes.json();
+
+      console.info(executeResult, "executeResult");
+
+      return { executeResult };
+    }
+  };
 
   // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
@@ -71,7 +87,10 @@ const ActionItem = ({ number, action, preview }: any) => {
                 </svg>
                 Edit
               </button>
-              <button className="flex-none rounded-xl bg-[#00AA44] px-8 py-2 text-sm font-semibold text-white shadow-xs text-xl font-medium hover:bg-green-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">
+              <button
+                onClick={() => executeRunId()}
+                className="flex-none rounded-xl bg-[#00AA44] px-8 py-2 text-sm font-semibold text-white shadow-xs text-xl font-medium hover:bg-green-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+              >
                 Confirm & Execute
               </button>
             </div>

@@ -1,12 +1,14 @@
 import CheckIcons from "../icons/CheckIcons";
 import Actions from "./Actions";
+import ActionsSkeleton from "./ActionsSkeleton";
 
 interface DetectIntentProps {
   detect: boolean;
   runData: any;
+  loading: boolean;
 }
 
-const DetectIntent = ({ detect, runData }: DetectIntentProps) => {
+const DetectIntent = ({ detect, runData, loading }: DetectIntentProps) => {
   return (
     <div
       className={`mt-6 border-1 border-[#D5D7E3] rounded-xl transition-all duration-300 ease-out
@@ -53,7 +55,7 @@ const DetectIntent = ({ detect, runData }: DetectIntentProps) => {
           </svg>
         </div>
       </div>
-      <Actions runData={runData} />
+      {loading ? <ActionsSkeleton /> : <Actions runData={runData} />}
     </div>
   );
 };
