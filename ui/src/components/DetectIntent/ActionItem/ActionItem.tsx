@@ -41,7 +41,7 @@ const ActionItem = ({ number, action, preview }: any) => {
                   return (
                     <div className="flex gap-2" key={index}>
                       <div className="flex justify-center items-center w-[26px] h-[26px] p-1 bg-[#9AD3B4] rounded-full text-white">
-                        {index}
+                        {index + 1}
                       </div>
                       {task}
                     </div>
