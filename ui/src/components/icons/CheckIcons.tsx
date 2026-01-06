@@ -1,6 +1,6 @@
 const CheckIcons = () => {
   return (
-    <div className="flex justify-center items-center p-1 bg-[#9AD3B4] rounded-full">
+    <div className="flex justify-center items-center p-1 bg-[#5EAE95] rounded-full">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         fill="none"

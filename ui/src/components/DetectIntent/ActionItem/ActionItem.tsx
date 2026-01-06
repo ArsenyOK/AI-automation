@@ -40,7 +40,11 @@ const ActionItem = ({
     }
   };
 
-  console.info(executeResult, "executeResult");
+  const priorityOrder: Record<string, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
 
   // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
@@ -75,7 +79,7 @@ const ActionItem = ({
                 {preview?.task_candidates.map((task: string, index: number) => {
                   return (
                     <div className="flex gap-2" key={index}>
-                      <div className="flex justify-center items-center w-[26px] h-[26px] p-1 bg-[#9AD3B4] rounded-full text-white">
+                      <div className="flex justify-center items-center w-[26px] h-[26px] p-1 bg-[#5EAE95] rounded-full text-white">
                         {index + 1}
                       </div>
                       {task}
@@ -144,20 +148,29 @@ const ActionItem = ({
             </div>
           </div>
         ) : (
-          <div>
-            <div className="border-b-1 border-[#D5D7E3] ml-1 pb-3 pl-3">
-              {executeResult.results.tasks.map(
-                (task: string, index: number) => {
-                  console.info(task);
+          <div
+            className={`border-1 border-[#D5D7E3] animate-fade-in transition-all duration-300 ease-out p-5 mt-4 rounded-xl bg-[#F9F9FB] ${
+              executeResult
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 translate-y-2"
+            }`}
+          >
+            <div className=" ml-1 pb-3 pl-3">
+              {[...executeResult.results.tasks]
+                .sort(
+                  (a, b) =>
+                    (priorityOrder[a.priority] ?? 99) -
+                    (priorityOrder[b.priority] ?? 99)
+                )
+                .map((task, index) => {
                   return (
-                    <div key={index}>
-                      <div
-                        className="flex gap-2 items-center gap-2 mt-2"
-                        key={index}
-                      >
-                        <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full"></div>
+                    <div key={`${task.title}-${index}`}>
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="w-[10px] h-[10px] bg-[#6181EF] rounded-full" />
+
                         <div
-                          className="flex justify-center items-center w-[26px] h-[26px] rounded-full text-white"
+                          title={`${task.priority} priority`}
+                          className="flex justify-center items-center w-[32px] h-[32px] rounded-full text-white"
                           style={{
                             backgroundColor:
                               task.priority === "high"
@@ -167,27 +180,39 @@ const ActionItem = ({
                                 : "#155DFC",
                           }}
                         >
-                          {task.priority
-                            ? task.priority === "high"
-                              ? "H"
-                              : task.priority === "medium"
-                              ? "M"
-                              : "L"
-                            : index + 1}
+                          {task.priority === "high"
+                            ? "H"
+                            : task.priority === "medium"
+                            ? "M"
+                            : "L"}
                         </div>
-                        <div className="flex-1 text-xl font-medium ml-2">
-                          <span className="text-[#6181EF]">{task.title}.</span>{" "}
+
+                        <div className="flex-1 text-xl font-normal ml-2">
+                          <span className="font-medium">{task.title}.</span>{" "}
                           {task.reason}
                         </div>
                       </div>
                     </div>
                   );
-                }
-              )}
+                })}
             </div>
-            <div className="flex justify-start items-center gap-2 mt-2 font-normal text-md">
-              <div className="w-[10px] h-[10px] bg-[#A8ADD3] rounded-full"></div>
-              {executeResult.results?.advice?.message}
+            <div className="flex flex-col border-1 border-[#D5D7E3] justify-start text-xl bg-[#EBEAF8] items-start p-5 bg-[#E9E9F7]s rounded-xl gap-2 mt-2 font-normal text-md">
+              <div className="flex items-center justify-center text-[#565E85] font-medium uppercase tracking-wide text-indigo-500 font-semibold">
+                {" "}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="#FD9D29"
+                  className="h-9 w-9 text-indigo-500"
+                >
+                  <path d="M12 3l1.7 3.8L18 8.5l-3 3 0.7 4.3L12 14l-3.7 1.8L9 11.5l-3-3 4.3-1.7L12 3z" />
+                  <path d="M5 3l.8 1.8L8 5.6 6.4 7l.4 2-1.8-1L3.2 9l.4-2L2 5.6l2.2-.8L5 3z" />
+                </svg>
+                AI Coach insight
+              </div>
+              <div className="font-normal">
+                {executeResult.results?.advice?.message}
+              </div>
             </div>
           </div>
         )}

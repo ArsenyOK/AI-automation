@@ -19,7 +19,7 @@ const DetectIntent = ({ detect, runData, loading }: DetectIntentProps) => {
           <div className="text-[#1B1D32] text-xl font-medium">
             Detected Intent:
           </div>
-          <div className="flex bg-[#D7ECE5] rounded-xl px-3 py-1 gap-2 items-center text-[#256D3B]">
+          <div className="flex bg-emerald-50 text-emerald-700 border-emerald-100 border-1 font-semibold rounded-xl px-3 py-1 gap-2 items-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -44,7 +44,7 @@ const DetectIntent = ({ detect, runData, loading }: DetectIntentProps) => {
             fill="none"
             viewBox="0 0 24 24"
             stroke-width="2"
-            stroke="#A6ACC1"
+            stroke="currentColor"
             className="size-10"
           >
             <path
