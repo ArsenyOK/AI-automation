@@ -3,6 +3,7 @@ import cors from "cors";
 import { z } from "zod";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import { Resend } from "resend";
 
 dotenv.config();
 
@@ -10,20 +11,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-
-const runs = new Map(); // runId -> { input, plan }
+const runs = new Map(); // runId -> { input, plan, executeResult? }
 
 // =====================
-// Input schema
+// Input schemas
 // =====================
 const CreateRunBody = z.object({
   input: z.string().min(1, "Prompt is required").max(4000),
   dryRun: z.boolean().optional().default(true),
+});
+
+const ExecuteBodySchema = z.object({
+  email: z.string().email().optional(),
+});
+
+const SendEmailBodySchema = z.object({
+  to: z.string().email(),
 });
 
 // =====================
@@ -45,7 +52,6 @@ const TimeRangeSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
-// Preview (то, что пользователь проверяет перед Confirm)
 const PreviewSchema = z
   .object({
     task_candidates: z.array(z.string()).default([]),
@@ -59,11 +65,7 @@ const PreviewSchema = z
 const CreateTasksIntent = z.object({
   intent: z.literal("create_tasks"),
   confidence: z.number().min(0).max(1),
-  entities: z
-    .object({
-      time_range: TimeRangeSchema,
-    })
-    .strict(),
+  entities: z.object({ time_range: TimeRangeSchema }).strict(),
   missing_fields: z.array(z.string()),
   requires_confirmation: z.boolean(),
 });
@@ -107,37 +109,26 @@ const DetectedIntentSchema = z.discriminatedUnion("intent", [
 // =====================
 // Action schemas
 // =====================
+// NOTE: send_email.to is OPTIONAL/"" in RUN planning (so Zod won't fail)
 const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     id: z.string(),
     type: z.literal("create_task_list"),
-    input: z
-      .object({
-        time_range: TimeRangeSchema,
-      })
-      .strict(),
+    input: z.object({ time_range: TimeRangeSchema }).strict(),
     depends_on: z.array(z.string()).optional(),
   }),
 
   z.object({
     id: z.string(),
     type: z.literal("summarize_text"),
-    input: z
-      .object({
-        text: z.string(),
-      })
-      .strict(),
+    input: z.object({ text: z.string() }).strict(),
     depends_on: z.array(z.string()).optional(),
   }),
 
   z.object({
     id: z.string(),
     type: z.literal("generate_email"),
-    input: z
-      .object({
-        prompt: z.string(),
-      })
-      .strict(),
+    input: z.object({ prompt: z.string() }).strict(),
     depends_on: z.array(z.string()).optional(),
   }),
 
@@ -146,7 +137,7 @@ const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("send_email"),
     input: z
       .object({
-        to: z.string().email(),
+        to: z.string().email().optional().or(z.literal("")),
         subject: z.string(),
         body: z.string(),
       })
@@ -155,7 +146,6 @@ const ActionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-// Response contract (/api/runs)
 const CreateRunResponse = z.object({
   runId: z.string(),
   detected_intent: DetectedIntentSchema,
@@ -176,9 +166,13 @@ const EnrichedTaskSchema = z
   })
   .strict();
 
-const AdviceSchema = z
+const AdviceSchema = z.object({ message: z.string().min(1) }).strict();
+
+const EmailStatusSchema = z
   .object({
-    message: z.string().min(1),
+    sent: z.boolean(),
+    to: z.string().email(),
+    error: z.string().optional(),
   })
   .strict();
 
@@ -197,18 +191,19 @@ const ExecuteResponseSchema = z.object({
       status: z.enum(["done", "failed"]),
     })
   ),
+  email_status: EmailStatusSchema.optional(),
 });
 
 // =====================
 // Helpers
 // =====================
-
 function extractTaskCandidatesLocal(input) {
   const lower = input.toLowerCase();
 
   const match =
     lower.match(/\b(task|tasks|my tasks)\s*:/i) ||
     lower.match(/\b(задачи|завдання)\s*:/i);
+
   if (!match || match.index == null) return [];
 
   const idx = match.index + match[0].length;
@@ -221,7 +216,6 @@ function extractTaskCandidatesLocal(input) {
     .slice(0, 30);
 }
 
-// Простой fallback enrichment (если AI упал)
 function fallbackEnrich(tasks) {
   return {
     tasks: tasks.map((t, i) => ({
@@ -238,13 +232,64 @@ function fallbackEnrich(tasks) {
   };
 }
 
+function escapeHtml(s = "") {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function timeRangeLabel(time_range) {
+  if (!time_range) return "your plan";
+  if (time_range.type === "preset")
+    return time_range.value.replaceAll("_", " ");
+  return `${time_range.start_date} → ${time_range.end_date}`;
+}
+
+function renderTasksEmail({ time_range, tasks, advice }) {
+  const title = `Your task plan (${timeRangeLabel(time_range)})`;
+  const items = tasks
+    .map(
+      (t) =>
+        `<li><b>[${escapeHtml(t.priority.toUpperCase())}]</b> ${escapeHtml(
+          t.title
+        )} — ${escapeHtml(t.reason)}</li>`
+    )
+    .join("");
+
+  return `
+  <div style="font-family: ui-sans-serif, system-ui; line-height: 1.5; color:#111827">
+    <h2 style="margin:0 0 12px 0">${escapeHtml(title)}</h2>
+    <ul style="padding-left:18px; margin:0 0 16px 0">${items}</ul>
+    <hr style="border:none; border-top:1px solid #E5E7EB; margin:16px 0" />
+    <p style="margin:0"><b>Coach tip:</b> ${escapeHtml(
+      advice?.message ?? ""
+    )}</p>
+  </div>
+  `.trim();
+}
+
+async function sendEmail({ to, subject, html }) {
+  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is missing");
+
+  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+
+  await resend.emails.send({
+    from,
+    to,
+    subject,
+    html,
+  });
+}
+
 // =====================
 // Mock plan fallback
 // =====================
 function mockPlan(input) {
   const text = input.toLowerCase();
 
-  // summarize
   if (
     text.includes("summary") ||
     text.includes("суммар") ||
@@ -266,29 +311,6 @@ function mockPlan(input) {
     };
   }
 
-  // email
-  if (
-    text.includes("email") ||
-    text.includes("письм") ||
-    text.includes("почт")
-  ) {
-    return {
-      detected_intent: {
-        intent: "generate_email",
-        confidence: 0.8,
-        entities: {},
-        missing_fields: ["email_to"],
-        requires_confirmation: true,
-      },
-      actions: [{ id: "a1", type: "generate_email", input: { prompt: input } }],
-      preview: {
-        summary: "I will draft an email based on your request.",
-        task_candidates: [],
-      },
-    };
-  }
-
-  // create tasks
   const time_range = { type: "preset", value: "next_week" };
   const task_candidates = extractTaskCandidatesLocal(input);
 
@@ -300,7 +322,15 @@ function mockPlan(input) {
       missing_fields: [],
       requires_confirmation: false,
     },
-    actions: [{ id: "a1", type: "create_task_list", input: { time_range } }],
+    actions: [
+      { id: "a1", type: "create_task_list", input: { time_range } },
+      {
+        id: "a2",
+        type: "send_email",
+        input: { to: "", subject: "Weekly Task Plan", body: "" },
+        depends_on: ["a1"],
+      },
+    ],
     preview: {
       task_candidates,
       summary:
@@ -310,7 +340,7 @@ function mockPlan(input) {
 }
 
 // =====================
-// Prompt (PLANNING + PREVIEW candidates)
+// Prompt (planning)
 // =====================
 function buildSystemPrompt() {
   return `
@@ -352,22 +382,28 @@ Rules:
 3) action.id must be unique like "a1", "a2"...
 4) detected_intent.entities must contain ONLY allowed keys (for create_tasks only time_range).
 5) For action type "create_task_list": input must contain ONLY { "time_range": <time_range_object> }.
-6) preview.task_candidates must list tasks that are EXPLICITLY mentioned by the user (extract-only; do NOT invent).
+6) preview.task_candidates must list tasks EXPLICITLY mentioned by the user (extract-only; do NOT invent).
 7) If user provided tasks separated by commas, extract them into preview.task_candidates.
 8) If no explicit tasks are provided, return preview.task_candidates as [].
 9) If you cannot determine a valid time_range, use preset next_week.
+10) If intent is "create_tasks", include TWO actions:
+   - a1: create_task_list
+   - a2: send_email (OPTIONAL email): set "to" to "" (empty), subject string, body "".
 
-Example (unknown):
+Example:
 {
   "detected_intent": {
-    "intent": "unknown",
-    "confidence": 0.2,
-    "entities": {},
+    "intent": "create_tasks",
+    "confidence": 0.9,
+    "entities": { "time_range": { "type": "preset", "value": "next_week" } },
     "missing_fields": [],
     "requires_confirmation": false
   },
-  "actions": [],
-  "preview": { "task_candidates": [], "summary": "I could not determine an intent." }
+  "actions": [
+    { "id": "a1", "type": "create_task_list", "input": { "time_range": { "type": "preset", "value": "next_week" } } },
+    { "id": "a2", "type": "send_email", "input": { "to": "", "subject": "Weekly Task Plan", "body": "" }, "depends_on": ["a1"] }
+  ],
+  "preview": { "task_candidates": ["Gym", "Meditation"], "summary": "I will create a task list for next week." }
 }
 `.trim();
 }
@@ -402,29 +438,7 @@ async function aiRepairPlan(badJsonText) {
     temperature: 0,
     messages: [
       { role: "system", content: buildRepairPrompt() },
-      {
-        role: "user",
-        content: JSON.stringify({
-          bad_json: badJsonText,
-          schema_hint: {
-            detected_intent: {
-              intent: "create_tasks|summarize_text|generate_email|unknown",
-              confidence: "number 0..1",
-              entities: "object",
-              missing_fields: "string[]",
-              requires_confirmation: "boolean",
-            },
-            actions: [
-              {
-                id: "a1",
-                type: "create_task_list|summarize_text|generate_email|send_email",
-                input: {},
-              },
-            ],
-            preview: { task_candidates: ["..."], summary: "..." },
-          },
-        }),
-      },
+      { role: "user", content: JSON.stringify({ bad_json: badJsonText }) },
     ],
   });
 
@@ -435,9 +449,8 @@ async function aiRepairPlan(badJsonText) {
 // AI Plan
 // =====================
 async function aiPlan(input) {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY)
     throw new Error("OPENAI_API_KEY is missing in .env");
-  }
 
   const PlanSchema = z.object({
     detected_intent: DetectedIntentSchema,
@@ -445,43 +458,30 @@ async function aiPlan(input) {
     preview: PreviewSchema.optional(),
   });
 
-  const messages = [
-    { role: "system", content: buildSystemPrompt() },
-    { role: "user", content: input },
-  ];
-
   const resp = await openai.chat.completions.create({
     model: MODEL,
-    messages,
+    messages: [
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: input },
+    ],
     temperature: 0.2,
   });
 
   const content = resp.choices?.[0]?.message?.content ?? "";
 
-  // 1) parse
   let parsed;
   try {
     parsed = JSON.parse(content);
-  } catch (e) {
+  } catch {
     throw new Error(`AI returned non-JSON content: ${content.slice(0, 200)}`);
   }
 
-  // 2) validate
   let check = PlanSchema.safeParse(parsed);
 
-  // 3) repair if invalid
   if (!check.success) {
     try {
       const repairedText = await aiRepairPlan(content);
-
-      let repairedParsed;
-      try {
-        repairedParsed = JSON.parse(repairedText);
-      } catch (e) {
-        throw new Error(
-          `Repair returned non-JSON: ${repairedText.slice(0, 200)}`
-        );
-      }
+      const repairedParsed = JSON.parse(repairedText);
 
       const repairedCheck = PlanSchema.safeParse(repairedParsed);
       if (!repairedCheck.success) {
@@ -492,21 +492,46 @@ async function aiPlan(input) {
       }
 
       check = repairedCheck;
-    } catch (repairErr) {
-      // если repair упал — выбрасываем исходную ошибку в общий catch (и уйдем в mock)
+    } catch {
       throw new Error(
         "AI JSON schema invalid: " + JSON.stringify(check.error.flatten())
       );
     }
   }
 
+  // ---- server-side guarantees for create_tasks ----
   if (check.data.detected_intent.intent === "create_tasks") {
     const localCandidates = extractTaskCandidatesLocal(input);
     const existing = check.data.preview?.task_candidates ?? [];
     const merged = existing.length ? existing : localCandidates;
 
+    // Ensure send_email action exists (don't rely on AI)
+    const hasSendEmail = check.data.actions.some(
+      (a) => a.type === "send_email"
+    );
+    const actions = [...check.data.actions];
+
+    if (!hasSendEmail) {
+      actions.push({
+        id: `a${actions.length + 1}`,
+        type: "send_email",
+        input: { to: "", subject: "Weekly Task Plan", body: "" },
+        depends_on: ["a1"],
+      });
+    }
+
+    // Ensure depends_on for send_email
+    for (const a of actions) {
+      if (a.type === "send_email" && !a.depends_on) a.depends_on = ["a1"];
+      if (a.type === "send_email") {
+        // normalize empty email
+        if (typeof a.input?.to !== "string") a.input.to = "";
+      }
+    }
+
     return {
       ...check.data,
+      actions,
       preview: {
         task_candidates: merged,
         summary:
@@ -554,14 +579,15 @@ Output:
 }
 
 async function aiEnrichTasks({ time_range, task_candidates }) {
-  const messages = [
-    { role: "system", content: buildEnrichPrompt() },
-    { role: "user", content: JSON.stringify({ time_range, task_candidates }) },
-  ];
-
   const resp = await openai.chat.completions.create({
     model: MODEL,
-    messages,
+    messages: [
+      { role: "system", content: buildEnrichPrompt() },
+      {
+        role: "user",
+        content: JSON.stringify({ time_range, task_candidates }),
+      },
+    ],
     temperature: 0.4,
   });
 
@@ -570,17 +596,14 @@ async function aiEnrichTasks({ time_range, task_candidates }) {
   let parsed;
   try {
     parsed = JSON.parse(content);
-  } catch (e) {
+  } catch {
     throw new Error(
       `Enrich returned non-JSON content: ${content.slice(0, 200)}`
     );
   }
 
   const EnrichSchema = z
-    .object({
-      tasks: z.array(EnrichedTaskSchema),
-      advice: AdviceSchema,
-    })
+    .object({ tasks: z.array(EnrichedTaskSchema), advice: AdviceSchema })
     .strict();
 
   const check = EnrichSchema.safeParse(parsed);
@@ -590,6 +613,7 @@ async function aiEnrichTasks({ time_range, task_candidates }) {
     );
   }
 
+  // Keep same titles & order
   const inputTitles = task_candidates;
   const outputTitles = check.data.tasks.map((t) => t.title);
 
@@ -609,16 +633,14 @@ async function aiEnrichTasks({ time_range, task_candidates }) {
 // 1) RUN = planning only
 app.post("/api/runs", async (req, res) => {
   const parsed = CreateRunBody.safeParse(req.body);
-  if (!parsed.success) {
+  if (!parsed.success)
     return res.status(400).json({ error: parsed.error.flatten() });
-  }
 
   const { input } = parsed.data;
   const runId = `run_${Date.now()}`;
 
   try {
     const plan = await aiPlan(input);
-
     const response = { runId, ...plan };
 
     const check = CreateRunResponse.safeParse(response);
@@ -638,77 +660,120 @@ app.post("/api/runs", async (req, res) => {
     const plan = mockPlan(input);
     runs.set(runId, { input, plan });
 
-    const response = { runId, ...plan, _fallback: "mock", _ai_error: reason };
-    return res.json(response);
+    return res.json({ runId, ...plan, _fallback: "mock", _ai_error: reason });
   }
 });
 
-// 2) CONFIRM & EXECUTE = выполнить план и вернуть enriched результат
+// 2) CONFIRM & EXECUTE = execute + optionally send email (if email provided)
 app.post("/api/runs/:id/execute", async (req, res) => {
   const runId = req.params.id;
-  const stored = runs.get(runId);
 
-  if (!stored) {
-    return res.status(404).json({ error: "Run not found" });
-  }
+  const bodyParsed = ExecuteBodySchema.safeParse(req.body ?? {});
+  if (!bodyParsed.success)
+    return res.status(400).json({ error: bodyParsed.error.flatten() });
+  const email = bodyParsed.data.email; // optional
+
+  const stored = runs.get(runId);
+  if (!stored) return res.status(404).json({ error: "Run not found" });
 
   const { input, plan } = stored;
-  const firstAction = plan.actions?.[0];
 
-  if (!firstAction) {
+  const firstAction = plan.actions?.find((a) => a.type === "create_task_list");
+  if (!firstAction)
     return res.status(400).json({ error: "No actions to execute" });
+
+  const task_candidates = plan.preview?.task_candidates?.length
+    ? plan.preview.task_candidates
+    : extractTaskCandidatesLocal(input);
+
+  const time_range = firstAction.input.time_range;
+
+  let enriched;
+  let enrichFallbackMeta = null;
+
+  try {
+    enriched = await aiEnrichTasks({ time_range, task_candidates });
+  } catch (err) {
+    const reason = err?.message || String(err);
+    console.error("AI ENRICH ERROR:", reason);
+    enriched = fallbackEnrich(task_candidates);
+    enrichFallbackMeta = { _fallback: "enrich_mock", _ai_error: reason };
   }
 
-  if (firstAction.type === "create_task_list") {
-    const task_candidates = plan.preview?.task_candidates?.length
-      ? plan.preview.task_candidates
-      : extractTaskCandidatesLocal(input);
-
-    const time_range = firstAction.input.time_range;
-
+  // optional email sending
+  let email_status;
+  if (email) {
     try {
-      const enriched = await aiEnrichTasks({ time_range, task_candidates });
-
-      const response = {
-        runId,
-        status: "success",
-        results: { time_range, tasks: enriched.tasks, advice: enriched.advice },
-        logs: [
-          { step: firstAction.id, type: firstAction.type, status: "done" },
-        ],
-      };
-
-      const check = ExecuteResponseSchema.safeParse(response);
-      if (!check.success) {
-        return res.status(500).json({
-          error: "Execute response invalid",
-          details: check.error.flatten(),
-        });
-      }
-
-      return res.json(response);
+      const subject = `Your task plan (${timeRangeLabel(time_range)})`;
+      const html = renderTasksEmail({
+        time_range,
+        tasks: enriched.tasks,
+        advice: enriched.advice,
+      });
+      await sendEmail({ to: email, subject, html });
+      email_status = { sent: true, to: email };
     } catch (err) {
       const reason = err?.message || String(err);
-      console.error("AI ENRICH ERROR:", reason);
-
-      const fallback = fallbackEnrich(task_candidates);
-
-      return res.json({
-        runId,
-        status: "success",
-        results: { time_range, tasks: fallback.tasks, advice: fallback.advice },
-        logs: [
-          { step: firstAction.id, type: firstAction.type, status: "done" },
-        ],
-        _fallback: "enrich_mock",
-        _ai_error: reason,
-      });
+      console.error("EMAIL SEND ERROR:", reason);
+      email_status = { sent: false, to: email, error: reason };
     }
   }
 
-  return res
-    .status(400)
-    .json({ error: `Unsupported action type: ${firstAction.type}` });
+  const response = {
+    runId,
+    status: "success",
+    results: { time_range, tasks: enriched.tasks, advice: enriched.advice },
+    logs: [{ step: firstAction.id, type: firstAction.type, status: "done" }],
+    email_status,
+    ...(enrichFallbackMeta || {}),
+  };
+
+  const check = ExecuteResponseSchema.safeParse(response);
+  if (!check.success) {
+    return res
+      .status(500)
+      .json({
+        error: "Execute response invalid",
+        details: check.error.flatten(),
+      });
+  }
+
+  runs.set(runId, { ...stored, executeResult: response });
+  return res.json(response);
+});
+
+// 3) SEND EMAIL after execute (recommended UI flow)
+app.post("/api/runs/:id/email", async (req, res) => {
+  const runId = req.params.id;
+
+  const bodyParsed = SendEmailBodySchema.safeParse(req.body ?? {});
+  if (!bodyParsed.success)
+    return res.status(400).json({ error: bodyParsed.error.flatten() });
+
+  const stored = runs.get(runId);
+  if (!stored) return res.status(404).json({ error: "Run not found" });
+
+  const { executeResult } = stored;
+  if (!executeResult || executeResult.status !== "success") {
+    return res.status(400).json({ error: "Run is not executed yet" });
+  }
+
+  const to = bodyParsed.data.to;
+
+  try {
+    const { time_range, tasks, advice } = executeResult.results;
+    const subject = `Your task plan (${timeRangeLabel(time_range)})`;
+    const html = renderTasksEmail({ time_range, tasks, advice });
+    await sendEmail({ to, subject, html });
+
+    return res.json({ runId, email_status: { sent: true, to } });
+  } catch (err) {
+    const reason = err?.message || String(err);
+    console.error("EMAIL SEND ERROR:", reason);
+    return res
+      .status(500)
+      .json({ runId, email_status: { sent: false, to, error: reason } });
+  }
 });
 
 app.listen(3001, () => {
