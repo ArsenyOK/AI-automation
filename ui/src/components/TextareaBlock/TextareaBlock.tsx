@@ -57,9 +57,9 @@ const TextareaBlock = ({
     <div className="flex justify-between gap-x-4">
       <div className="relative flex-1">
         <input
-          id="email-address"
-          type="email"
-          name="email"
+          id="prompt"
+          type="text"
+          name="prompt"
           required
           value={text}
           onChange={handleChange}
