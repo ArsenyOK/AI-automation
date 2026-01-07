@@ -15,9 +15,8 @@ const TextareaBlock = ({
   loading,
   setLoading,
   setText,
-  text
+  text,
 }: TextareaBlockProps) => {
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
   };
@@ -43,24 +42,6 @@ const TextareaBlock = ({
       setLoading(false);
     }
 
-    let executeResult = null;
-
-    // if (plan?.runId) {
-    //   const execRes = await fetch(
-    //     `http://localhost:3001/api/runs/${plan.runId}/execute`,
-    //     { method: "POST" }
-    //   );
-
-    //   if (!execRes.ok) {
-    //     const errText = await execRes.text();
-    //     throw new Error(`Execute error: ${execRes.status} ${errText}`);
-    //   }
-
-    //   executeResult = await execRes.json();
-    // }
-
-    // console.info("PLAN:", plan);
-
     return { plan };
   };
 
@@ -74,16 +55,28 @@ const TextareaBlock = ({
 
   return (
     <div className="flex justify-between gap-x-4">
-      <input
-        id="email-address"
-        type="email"
-        name="email"
-        required
-        value={text}
-        onChange={handleChange}
-        placeholder="Plan my task for the next week and send the list to my eamil"
-        className="min-w-0 flex-auto rounded-xl bg-[#F7F6FA] px-3.5 font-medium text-md py-2 border-2 border-gray-200 outline-1 -outline-offset-1 outline-white/5 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500"
-      />
+      <div className="relative flex-1">
+        <input
+          id="email-address"
+          type="email"
+          name="email"
+          required
+          value={text}
+          onChange={handleChange}
+          placeholder="Plan my task for the next week and send the list to my eamil"
+          className="w-full rounded-xl bg-[#F7F6FA] px-3.5 font-medium text-md py-3 border-2 border-gray-200 outline-1 -outline-offset-1 outline-white/5 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 shadow-sm"
+        />
+        {text?.trim()?.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setText("")}
+            className="absolute cursor-pointer right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Clear input"
+          >
+            ✕
+          </button>
+        )}
+      </div>
       <button
         onClick={onSubmit}
         disabled={loading}

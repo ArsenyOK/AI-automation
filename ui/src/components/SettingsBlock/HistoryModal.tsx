@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { TrashIcon } from "../icons/TrashIcon";
+
 type HistoryItem = {
   id: string;
   title: string;
@@ -14,6 +17,7 @@ type HistoryModalProps = {
   items: HistoryItem[];
   activeId?: string | null;
   onSelectItem?: (id: string) => void;
+  onDeleteItem?: (id: string) => void;
 };
 
 const intentPillClasses = (intent: HistoryItem["intent"]) => {
@@ -34,15 +38,23 @@ export const HistoryModal = ({
   onClose,
   items,
   onSelectItem,
+  onDeleteItem,
   activeId = null,
 }: HistoryModalProps) => {
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
   if (!open) return null;
+
+  const onCloseMenu = () => {
+    onClose();
+    setMenuOpenId(null);
+  };
 
   return (
     <div className="fixed inset-0 z-50">
       <button
         aria-label="Close"
-        onClick={onClose}
+        onClick={onCloseMenu}
         className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
 
@@ -50,7 +62,7 @@ export const HistoryModal = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <button
-              onClick={onClose}
+              onClick={onCloseMenu}
               className="rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer"
               aria-label="Back"
             >
@@ -73,7 +85,7 @@ export const HistoryModal = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={onCloseMenu}
             className="rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer"
             aria-label="Close"
           >
@@ -128,7 +140,10 @@ export const HistoryModal = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelectItem?.(item.id)}
+                onClick={() => {
+                  setMenuOpenId(null);
+                  onSelectItem?.(item.id);
+                }}
                 className={[
                   "relative w-full text-left rounded-2xl border bg-white shadow-sm overflow-hidden transition",
                   "hover:shadow-md hover:border-slate-300",
@@ -179,21 +194,58 @@ export const HistoryModal = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                      className="size-5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"
-                      />
-                    </svg>
+                  <div className="flex items-center gap-2 text-slate-400 cursor-pointer">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuOpenId((prev) =>
+                            prev === item.id ? null : item.id
+                          );
+                        }}
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer transition"
+                        aria-label="Open menu"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                          stroke="currentColor"
+                          className="size-5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"
+                          />
+                        </svg>
+                      </button>
+
+                      {menuOpenId === item.id && (
+                        <div
+                          className="absolute right-0 top-9 z-50 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 cursor-pointer"
+                            onClick={() => {
+                              onDeleteItem?.(item.id);
+                              setMenuOpenId(null);
+                            }}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -218,14 +270,14 @@ export const HistoryModal = ({
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
-              strokeWidth={1.5}
+              stroke-width="1.5"
               stroke="currentColor"
-              className="size-5"
+              className="size-6"
             >
               <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M2.985 14.652l3.181-3.182a8.25 8.25 0 0 1 13.803 3.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
               />
             </svg>
             Load more
