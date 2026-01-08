@@ -48,6 +48,31 @@ const App = () => {
     setDetect(true);
   };
 
+  const fetchData = async (text: string) => {
+    setLoading(true);
+    setExecuteResult(null);
+    const planRes = await fetch("http://localhost:3001/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: text, dryRun: false }),
+    });
+
+    if (!planRes.ok) {
+      const errText = await planRes.text();
+      setLoading(false);
+      throw new Error(`Plan error: ${planRes.status} ${errText}`);
+    }
+
+    const plan = await planRes.json();
+
+    if (plan?.runId) {
+      setRunData(plan);
+      setLoading(false);
+    }
+
+    return { plan };
+  };
+
   useEffect(() => {
     if (!runData?.runId) return;
 
@@ -140,6 +165,7 @@ const App = () => {
                 console.info(selected, "selected");
                 if (!selected) return;
 
+                fetchData(selected.input || "");
                 setText(selected.input || "");
                 setRunData(selected.runData);
                 setExecuteResult(null);
@@ -150,12 +176,10 @@ const App = () => {
         </div>
         <div className="mt-6 mx-4">
           <TextareaBlock
-            setLoading={setLoading}
             loading={loading}
             toggleDetect={toggleDetect}
-            setRunData={setRunData}
             setText={setText}
-            setExecuteResult={setExecuteResult}
+            runFetchData={fetchData}
             text={text}
           />
           <DetectIntent

@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 interface TextareaBlockProps {
   toggleDetect: () => void;
   setRunData: (data: any) => void;
@@ -8,50 +6,24 @@ interface TextareaBlockProps {
   setText?: (text: string) => void;
   text?: string;
   setExecuteResult?: (data: any) => void;
+  runFetchData?: (text: string) => Promise<{ plan: any }>;
 }
 
 const TextareaBlock = ({
   toggleDetect,
-  setRunData,
   loading,
-  setLoading,
   setText,
+  runFetchData,
   text,
-  setExecuteResult,
 }: TextareaBlockProps) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
   };
 
-  const fetchData = async (text: string) => {
-    setLoading(true);
-    setExecuteResult(null);
-    const planRes = await fetch("http://localhost:3001/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: text, dryRun: false }),
-    });
-
-    if (!planRes.ok) {
-      const errText = await planRes.text();
-      setLoading(false);
-      throw new Error(`Plan error: ${planRes.status} ${errText}`);
-    }
-
-    const plan = await planRes.json();
-
-    if (plan?.runId) {
-      setRunData(plan);
-      setLoading(false);
-    }
-
-    return { plan };
-  };
-
   const onSubmit = (e: React.FormEvent) => {
     if (text) {
       e.preventDefault();
-      fetchData(text);
+      runFetchData(text);
       toggleDetect();
     }
   };
