@@ -7,6 +7,7 @@ interface TextareaBlockProps {
   setLoading: (loading: boolean) => void;
   setText?: (text: string) => void;
   text?: string;
+  setExecuteResult?: (data: any) => void;
 }
 
 const TextareaBlock = ({
@@ -16,6 +17,7 @@ const TextareaBlock = ({
   setLoading,
   setText,
   text,
+  setExecuteResult,
 }: TextareaBlockProps) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setText(e.target.value);
@@ -23,6 +25,7 @@ const TextareaBlock = ({
 
   const fetchData = async (text: string) => {
     setLoading(true);
+    setExecuteResult(null);
     const planRes = await fetch("http://localhost:3001/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -39,7 +39,7 @@ const Actions = ({
             {isDoneExecute[0].type + ": " + isDoneExecute[0].status}
           </div>
         )}
-        {emailData && emailData?.email_status?.sent && (
+        {executeResult && emailData && emailData?.email_status?.sent && (
           <div className="flex bg-[#DFECEB] rounded-md px-3 py-2 gap-2 items-center text-[#256D3B]">
             <CheckIcons />
             Email sent successfully to {emailData?.email_status.to}

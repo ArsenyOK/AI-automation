@@ -66,6 +66,7 @@ const ActionItem = ({
 
     try {
       setIsExecuting(true);
+      setEmailData(null);
 
       const execRes = await fetch(
         `http://localhost:3001/api/runs/${plan.runId}/execute`,
@@ -97,14 +98,28 @@ const ActionItem = ({
   // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
     <div className="flex">
-      <div className="flex flex-col items-center mr-4 gap-2">
-        <div
-          className={`flex justify-center items-center w-[30px] h-[30px] p-1 bg-[#9AD3B4] rounded-full bg-linear-to-t from-sky-500 to-indigo-500 text-white`}
-        >
-          {number}
+      {number === 1 ? (
+        <div className="flex flex-col items-center mr-4 gap-2">
+          <div
+            className={`flex justify-center items-center w-[30px] h-[30px] p-1 bg-[#9AD3B4] rounded-full bg-linear-to-t from-sky-500 to-indigo-500 text-white`}
+          >
+            {number}
+          </div>
+          <div className="h-full w-[1px] bg-[#D5D7E3]"></div>
         </div>
-        <div className="h-full w-[1px] bg-[#D5D7E3]"></div>
-      </div>
+      ) : (
+        number === 2 &&
+        executeResult && (
+          <div className="flex flex-col items-center mr-4 gap-2">
+            <div
+              className={`flex justify-center items-center w-[30px] h-[30px] p-1 bg-[#9AD3B4] rounded-full bg-linear-to-t from-sky-500 to-indigo-500 text-white`}
+            >
+              {number}
+            </div>
+            <div className="h-full w-[1px] bg-[#D5D7E3]"></div>
+          </div>
+        )
+      )}
       {action.type === "create_task_list" ? (
         <div className="w-full pb-2">
           <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center">

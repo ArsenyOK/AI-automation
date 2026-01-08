@@ -155,6 +155,7 @@ const App = () => {
             toggleDetect={toggleDetect}
             setRunData={setRunData}
             setText={setText}
+            setExecuteResult={setExecuteResult}
             text={text}
           />
           <DetectIntent
