@@ -49,7 +49,8 @@ This makes the process:
 Enter your plan in plain text, for example:
 
 
-![alt text](image.png)
+<img width="1226" height="254" alt="image" src="https://github.com/user-attachments/assets/3fd29b3a-d997-4b74-9048-f57511d8fb98" />
+
 
 ---
 
@@ -60,7 +61,8 @@ The AI will:
 - extract mentioned tasks
 - show a preview of the plan
 
-![alt text](image-1.png)
+<img width="1168" height="663" alt="image" src="https://github.com/user-attachments/assets/9fd0ebfb-13a5-4e38-9ba0-51533199e184" />
+
 
 ---
 
@@ -70,7 +72,8 @@ After confirmation:
 - tasks are enriched with priorities (`high / medium / low`)
 - a short **Coach tip** is added
 
-![alt text](image-2.png)
+<img width="1104" height="464" alt="image" src="https://github.com/user-attachments/assets/90e2f2b7-6eaa-4bc4-934f-da4d2f1eb0d4" />
+
 
 ---
 
@@ -80,7 +83,8 @@ You can:
 - enter an email address
 - send the generated plan with one click
 
-![alt text](image-3.png)
+<img width="1102" height="153" alt="image" src="https://github.com/user-attachments/assets/00058ff9-2d52-4ffe-a6cc-9bc59498ae77" />
+
 
 ---
 
@@ -97,7 +101,8 @@ You can:
 - restore results
 - delete individual history items
 
-![alt text](image-4.png)
+<img width="917" height="1113" alt="image" src="https://github.com/user-attachments/assets/c3b40b4a-5273-42d6-98e4-3bb528746b45" />
+
 
 ---
 
@@ -107,7 +112,8 @@ In the settings menu you can:
 - switch theme (Light / Dark / System)
 - reset the current session
 
-![alt text](image-5.png)
+<img width="299" height="286" alt="image" src="https://github.com/user-attachments/assets/5ab81c8d-1cea-40a9-9305-c55822901997" />
+
 
 ---
 
@@ -120,7 +126,8 @@ The application supports:
 
 Theme changes are applied globally and persist across sessions.
 
-![alt text](image-6.png)
+<img width="1216" height="1119" alt="image" src="https://github.com/user-attachments/assets/cadf43bf-de91-4efa-bd4a-48b5796169a9" />
+
 
 ---
 
