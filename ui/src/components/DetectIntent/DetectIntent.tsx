@@ -19,12 +19,12 @@ const DetectIntent = ({
 }: DetectIntentProps) => {
   return (
     <div
-      className={`mt-6 border-1 border-[#D5D7E3] rounded-xl transition-all duration-300 ease-out
+      className={`mt-6 border-1 border-[#D5D7E3] rounded-xl transition-all duration-300 ease-out dark:border-slate-800 dark:shadow-none
     ${detect ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
     >
-      <div className="flex justify-between items-center mb-2 p-5 font-sans rounded-t-xl w-full bg-[#F1F1F6] border-b-1 border-[#D5D7E3]">
+      <div className="flex justify-between items-center mb-2 p-5 font-sans rounded-t-xl w-full bg-[#F1F1F6] border-b-1 border-[#D5D7E3] dark:bg-slate-950/60 dark:border-slate-800">
         <div className="flex gap-2 items-center">
-          <div className="text-[#1B1D32] text-xl font-medium">
+          <div className="text-[#1B1D32] text-xl font-medium dark:text-slate-300">
             Detected Intent:
           </div>
           <div className="flex bg-emerald-50 text-emerald-700 border-emerald-100 border-1 font-semibold rounded-xl px-3 py-1 gap-2 items-center">

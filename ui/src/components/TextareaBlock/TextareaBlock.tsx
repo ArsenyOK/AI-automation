@@ -39,7 +39,21 @@ const TextareaBlock = ({
           value={text}
           onChange={handleChange}
           placeholder="Plan my task for the next week and send the list to my eamil"
-          className="w-full rounded-xl bg-[#F7F6FA] px-3.5 font-medium text-md py-3 border-2 border-gray-200 outline-1 -outline-offset-1 outline-white/5 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 shadow-sm"
+          className="w-full rounded-xl px-3.5 py-3
+bg-[#F7F6FA] border-2 border-gray-200
+font-medium text-md
+placeholder:text-gray-500
+shadow-sm
+outline-1 -outline-offset-1 outline-white/5
+focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500
+transition-colors
+
+dark:bg-slate-900
+dark:border-slate-700
+dark:text-slate-100
+dark:placeholder:text-slate-400
+dark:outline-slate-700/40
+dark:shadow-none"
         />
         {text?.trim()?.length > 0 && (
           <button

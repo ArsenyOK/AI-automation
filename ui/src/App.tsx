@@ -3,7 +3,8 @@ import "./App.css";
 import DetectIntent from "./components/DetectIntent/DetectIntent";
 import TextareaBlock from "./components/TextareaBlock/TextareaBlock";
 import { HistoryModal } from "./components/SettingsBlock/HistoryModal";
-import { SettingsBlock } from "./components/SettingsBlock/Settingsblock";
+import SettingsBlock from "./components/SettingsBlock/Settingsblock";
+import { useSettings } from "./hooks/useSettings";
 
 type StoredRun = {
   id: string;
@@ -40,6 +41,7 @@ const App = () => {
     loadHistory()
   );
   const [isRestoring, setIsRestoring] = useState(false);
+  const { settings, setTheme } = useSettings();
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
@@ -125,13 +127,21 @@ const App = () => {
       <div
         className={`rounded-xl ${
           !detect ? "h-[220px]" : ""
-        } shadow-md font-sans w-300 min-h-[220px] pb-10 bg-[#FBFBFD] border-1 border-[#D5D7E3]`}
+        } shadow-md font-sans w-300 min-h-[220px] pb-10
+     bg-[#FBFBFD] border border-[#D5D7E3]
+     dark:bg-slate-900 dark:border-slate-800 dark:shadow-none`}
       >
-        <div className="w-full flex-initial bg-[#F1F1F6] rounded-t-xl flex justify-between items-center p-5 border-b-1 border-[#ECEDF4]">
+        <div
+          className="w-full flex-initial bg-[#F1F1F6] rounded-t-xl flex justify-between items-center p-5
+               border-b border-[#ECEDF4]
+               dark:bg-slate-950/60 dark:border-slate-800 dark:text-slate-300"
+        >
           <div className="text-2xl font-medium">AI Prompt → Action Engine</div>
           <>
             <SettingsBlock
               onOpenHistory={() => setHistoryOpen(true)}
+              settings={settings}
+              setTheme={setTheme}
               onResetSession={() => {
                 setText("");
                 setDetect(false);

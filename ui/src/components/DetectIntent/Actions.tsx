@@ -18,8 +18,8 @@ const Actions = ({
 
   return (
     <div className="mb-2 p-5">
-      <div className="text-[#1B1D32] text-xl font-medium">Actions:</div>
-      <div className="mt-4  p-5 border-1 border-[#D5D7E3] shadow-md rounded-xl flex flex-col gap-1">
+      <div className="text-[#1B1D32] text-xl font-medium dark:text-slate-300">Actions:</div>
+      <div className="mt-4  p-5 border-1 border-[#D5D7E3] shadow-md dark:border-slate-800 dark:shadow-none rounded-xl flex flex-col gap-1">
         {runData?.actions.map((action, key) => (
           <ActionItem
             key={key}

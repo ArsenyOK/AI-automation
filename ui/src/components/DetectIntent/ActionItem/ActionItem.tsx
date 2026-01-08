@@ -95,7 +95,6 @@ const ActionItem = ({
     low: 2,
   };
 
-  // My plan for next week. Task: The gym, the main meeting, meditation, the reading, create own project
   return (
     <div className="flex">
       {number === 1 ? (
@@ -105,7 +104,7 @@ const ActionItem = ({
           >
             {number}
           </div>
-          <div className="h-full w-[1px] bg-[#D5D7E3]"></div>
+          <div className="h-full w-[1px] bg-[#D5D7E3] dark:bg-slate-800"></div>
         </div>
       ) : (
         number === 2 &&
@@ -116,16 +115,19 @@ const ActionItem = ({
             >
               {number}
             </div>
-            <div className="h-full w-[1px] bg-[#D5D7E3]"></div>
+            <div className="h-full w-[1px] bg-[#D5D7E3] dark:bg-slate-800"></div>
           </div>
         )
       )}
       {action.type === "create_task_list" ? (
         <div className="w-full pb-2">
-          <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center">
+          <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center dark:text-slate-300">
             <div>
               Create task list{" "}
-              <span className="bg-[#F1F1F6] rounded-xl px-3 py-1 gap-2 items-center">
+              <span
+                className="bg-[#F1F1F6] rounded-xl px-3 py-1 gap-2 items-center
+  dark:bg-slate-900/60 dark:ring-1 dark:ring-slate-700"
+              >
                 {action.input.time_range.type === "custom"
                   ? action.input.time_range.end_date
                   : action.input.time_range.value}
@@ -135,7 +137,11 @@ const ActionItem = ({
           </div>
           {preview && !executeResult ? (
             <div className="flex flex-col mt-2 gap-4">
-              <div className="flex w-full flex-col gap-1 mt-4  p-5 border-1 border-[#D5D7E3] bg-[#F1F1F6] rounded-xl">
+              <div
+                className="flex w-full flex-col gap-1 mt-4 p-5 rounded-xl
+border border-[#D5D7E3] bg-[#F1F1F6]
+dark:bg-slate-900 dark:border-slate-800 dark:shadow-none dark:text-slate-300"
+              >
                 <div className="text-xl font-medium">
                   Preview task <span className="font-normal">candidates:</span>
                 </div>
@@ -144,7 +150,11 @@ const ActionItem = ({
                     (task: string, index: number) => {
                       return (
                         <div className="flex gap-2" key={index}>
-                          <div className="flex justify-center items-center w-[26px] h-[26px] p-1 bg-[#5EAE95] rounded-full text-white">
+                          <div
+                            className="flex justify-center items-center w-[26px] h-[26px] p-1 rounded-full text-white
+bg-[#5EAE95]
+dark:ring-2 dark:ring-slate-900"
+                          >
                             {index + 1}
                           </div>
                           {task}
@@ -154,8 +164,12 @@ const ActionItem = ({
                   )}
                 </div>
               </div>
-              <div className="flex justify-start items-center gap-2 mt-2 font-normal text-md">
-                <div className="w-[10px] h-[10px] bg-[#A8ADD3] rounded-full"></div>
+              <div className="flex justify-start items-center gap-2 mt-2 font-normal text-md dark:text-slate-300">
+                <div
+                  className="w-[10px] h-[10px] rounded-full
+bg-[#A8ADD3]
+dark:ring-1 dark:ring-slate-700"
+                ></div>
                 {preview?.summary}
               </div>
               <div className="flex justify-end items-center gap-4 mt-2">
@@ -215,7 +229,10 @@ const ActionItem = ({
             </div>
           ) : (
             <div
-              className={`border-1 border-[#D5D7E3] animate-fade-in transition-all duration-300 ease-out p-5 mt-4 rounded-xl bg-[#F9F9FB] ${
+              className={`border border-[#D5D7E3] p-5 mt-4 rounded-xl
+bg-[#F9F9FB]
+animate-fade-in transition-all duration-300 ease-out
+dark:bg-slate-900 dark:border-slate-800 ${
                 executeResult
                   ? "opacity-100 translate-y-0"
                   : "opacity-0 translate-y-2"
@@ -253,7 +270,7 @@ const ActionItem = ({
                               : "L"}
                           </div>
 
-                          <div className="flex-1 text-xl font-normal ml-2">
+                          <div className="flex-1 text-xl font-normal ml-2 dark:text-slate-300">
                             <span className="font-medium">{task.title}.</span>{" "}
                             {task.reason}
                           </div>
@@ -262,7 +279,13 @@ const ActionItem = ({
                     );
                   })}
               </div>
-              <div className="flex flex-col border-1 border-[#D5D7E3] justify-start text-xl bg-[#EBEAF8] items-start p-5 bg-[#E9E9F7]s rounded-xl gap-2 mt-2 font-normal text-md">
+              <div
+                className="flex flex-col justify-start items-start gap-2 mt-2 p-5 rounded-xl
+border border-[#D5D7E3]
+bg-[#EBEAF8]
+text-md font-normal
+dark:bg-slate-900/70 dark:border-slate-800"
+              >
                 <div className="flex items-center justify-center text-[#565E85] font-medium uppercase tracking-wide text-indigo-500 font-semibold">
                   {" "}
                   <svg
@@ -276,7 +299,7 @@ const ActionItem = ({
                   </svg>
                   AI Coach insight
                 </div>
-                <div className="font-normal">
+                <div className="font-normal text-md text-[#1B1D32] dark:text-slate-300">
                   {executeResult.results?.advice?.message}
                 </div>
               </div>
@@ -287,7 +310,7 @@ const ActionItem = ({
         <>
           {executeResult && (
             <div className="w-full pb-2">
-              <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center">
+              <div className="text-[#1B1D32] text-xl font-medium flex justify-between items-center dark:text-slate-300">
                 <div>
                   Send to email{" "}
                   <span className="font-normal text-md text-[#999999]">
@@ -295,7 +318,7 @@ const ActionItem = ({
                   </span>
                 </div>
               </div>
-              <div className="flex w-full flex-col gap-1 mt-4  p-5 border-1 border-[#D5D7E3] bg-[#F1F1F6] rounded-xl">
+              <div className="flex w-full flex-col gap-1 mt-4  p-5 border-1 border-[#D5D7E3] bg-[#F1F1F6] rounded-xl dark:bg-slate-900 dark:border-slate-800 dark:shadow-none">
                 <div className="flex justify-between gap-x-4">
                   <div className="relative flex-1">
                     <input
@@ -306,7 +329,21 @@ const ActionItem = ({
                       value={email}
                       onChange={handleChange}
                       placeholder="Send the list to your eamil"
-                      className="w-full rounded-xl bg-[#F7F6FA] px-3.5 font-medium text-md py-3 border-2 border-gray-200 outline-1 -outline-offset-1 outline-white/5 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 shadow-sm"
+                      className="w-full rounded-xl px-3.5 py-3
+bg-[#F7F6FA] border-2 border-gray-200
+font-medium text-md
+placeholder:text-gray-500
+shadow-sm
+outline-1 -outline-offset-1 outline-white/5
+focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500
+transition-colors
+
+dark:bg-slate-900
+dark:border-slate-700
+dark:text-slate-100
+dark:placeholder:text-slate-400
+dark:outline-slate-700/40
+dark:shadow-none"
                     />
                   </div>
                   <button

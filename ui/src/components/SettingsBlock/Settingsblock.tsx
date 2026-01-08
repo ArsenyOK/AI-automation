@@ -1,52 +1,102 @@
 import { useEffect, useRef, useState } from "react";
 import SettingsIcon from "../icons/SettingsIcon";
+import type { Settings } from "../../hooks/useSettings";
 
 type SettingsBlockProps = {
   onOpenHistory: () => void;
   onResetSession: () => void;
-  onOpenSettings?: () => void;
+
+  settings: Settings;
+  setTheme: (theme: Settings["theme"]) => void;
 };
 
-export const SettingsBlock = ({
+const SettingsBlock = ({
   onOpenHistory,
   onResetSession,
-  onOpenSettings,
+  settings,
+  setTheme,
 }: SettingsBlockProps) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false); // three dots menu
+  const [settingsOpen, setSettingsOpen] = useState(false); // settings popover
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (!menuOpen) return;
       const target = e.target as Node;
-      if (menuRef.current && !menuRef.current.contains(target)) {
+      if (rootRef.current && !rootRef.current.contains(target)) {
         setMenuOpen(false);
+        setSettingsOpen(false);
       }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setSettingsOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const ThemeRow = ({
+    value,
+    label,
+  }: {
+    value: Settings["theme"];
+    label: string;
+  }) => {
+    const active = settings.theme === value;
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(value)}
+        className={[
+          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition cursor-pointer",
+          active
+            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200"
+            : "hover:bg-slate-50 text-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60",
+        ].join(" ")}
+      >
+        <span className="font-medium">{label}</span>
+        <span
+          className={[
+            "h-4 w-4 rounded-full border flex items-center justify-center",
+            active
+              ? "border-indigo-500 bg-indigo-600"
+              : "border-slate-300 dark:border-slate-600",
+          ].join(" ")}
+        >
+          {active ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div
-      ref={menuRef}
-      className="relative inline-flex items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-[#7A7E96] shadow-sm"
+      ref={rootRef}
+      className="
+    relative inline-flex items-center gap-2 rounded-xl
+    bg-white px-2 py-1.5 text-slate-600 shadow-sm ring-1 ring-slate-200/60
+    dark:bg-slate-900 dark:text-slate-300 dark:shadow-none dark:ring-slate-800
+  "
     >
+      {/* History */}
       <button
         type="button"
         onClick={() => {
           setMenuOpen(false);
+          setSettingsOpen(false);
           onOpenHistory();
         }}
-        className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition cursor-pointer"
+        className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition cursor-pointer
+                   dark:hover:bg-slate-800/60"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -65,26 +115,59 @@ export const SettingsBlock = ({
         <span className="text-sm font-medium">History</span>
       </button>
 
-      <div className="h-6 w-px bg-slate-200" />
+      <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
 
+      {/* Settings popover */}
       <button
         type="button"
         onClick={() => {
           setMenuOpen(false);
-          onOpenSettings?.();
+          setSettingsOpen((v) => !v);
         }}
-        className="inline-flex items-center justify-center rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer"
+        className="inline-flex items-center justify-center rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer
+                   dark:hover:bg-slate-800/60"
         aria-label="Settings"
       >
         <SettingsIcon />
       </button>
 
-      <div className="h-6 w-px bg-slate-200" />
+      {settingsOpen && (
+        <div
+          className="absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg
+                        dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Appearance
+          </div>
 
+          <div className="px-2 pb-2">
+            <ThemeRow value="system" label="System" />
+            <ThemeRow value="light" label="Light" />
+            <ThemeRow value="dark" label="Dark" />
+          </div>
+
+          <div className="h-px bg-slate-100 dark:bg-slate-800" />
+
+          <div className="px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Tip
+          </div>
+          <div className="px-3 pb-3 text-xs text-slate-500 dark:text-slate-400">
+            Theme is saved automatically.
+          </div>
+        </div>
+      )}
+
+      <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+
+      {/* Three dots menu */}
       <button
         type="button"
-        onClick={() => setMenuOpen((v) => !v)}
-        className="inline-flex items-center justify-center rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer"
+        onClick={() => {
+          setSettingsOpen(false);
+          setMenuOpen((v) => !v);
+        }}
+        className="inline-flex items-center justify-center rounded-lg p-2 hover:bg-slate-50 transition cursor-pointer
+                   dark:hover:bg-slate-800/60"
         aria-label="More"
       >
         <svg
@@ -104,8 +187,11 @@ export const SettingsBlock = ({
       </button>
 
       {menuOpen && (
-        <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
-          <div className="px-3 py-2 text-xs font-semibold text-slate-500">
+        <div
+          className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg
+                        dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
             Session
           </div>
 
@@ -115,43 +201,14 @@ export const SettingsBlock = ({
               setMenuOpen(false);
               onResetSession();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer
+                       dark:text-slate-200 dark:hover:bg-slate-800/60"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-              className="size-6"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-              />
-            </svg>
-
-            <div className="flex flex-col">
-              <span className="font-medium">Reset session</span>
-              <span className="text-xs text-slate-500">
-                Clear input, plan, and results
-              </span>
-            </div>
-          </button>
-
-          <div className="h-px bg-slate-100" />
-
-          <button
-            type="button"
-            disabled
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-300"
-          >
-            <span className="size-5" />
-            Clear history (soon)
+            <span className="font-medium">Reset session</span>
           </button>
         </div>
       )}
     </div>
   );
 };
+export default SettingsBlock;
